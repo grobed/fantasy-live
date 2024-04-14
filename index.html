@@ -13,13 +13,34 @@
   <thead>
     <tr>
       <th>Vehicle Number</th>
+      <th>Owner</th>
     </tr>
   </thead>
   <tbody id="liveFeedData"></tbody>
+</table>
 
 <p>Last Updated: <span id="lastUpdate"></span></p>
 
 <script>
+  // Owner-Driver mapping
+  const ownerDriverMap = new Map([
+    ["Kyle Larson", "David Lee Grobe"],
+    ["William Byron", "Brian Rye (#2)"],
+    ["Tyler Reddick", "Mark Almaguer"],
+    ["Christopher Bell", "Bobby Grobe (#2)"],
+    ["Ryan Blaney", "Susan Grobe"],
+    ["Denny Hamlin", "Billy Grobe"],
+    ["Kyle Busch", "Jeff Lindhorst"],
+    ["Ty Gibbs", "Bobby Grobe (#1)"],
+    ["Martin Truex Jr", "Daniel Grobe"],
+    ["Ross Chastain", "Austin Rye"],
+    ["Chase Elliott", "Travis Penny"],
+    ["Bubba Wallace", "Tommy Rye"],
+    ["Joey Logano", "Connor Rye"],
+    ["Chris Buescher", "Brian Rye (#1)"],
+    ["Alex Bowman", "Kris Rye"]
+  ]);
+
   function fetchLiveFeed() {
     fetch('https://cf.nascar.com/live/feeds/live-feed.json')
       .then(response => response.json())
@@ -35,10 +56,12 @@
           // Clear existing table rows
           liveFeedData.innerHTML = '';
 
-          // Populate table with vehicle numbers
+          // Populate table with vehicle numbers and owners
           data.vehicles.forEach(vehicle => {
             const row = document.createElement('tr');
-            row.innerHTML = `<td>${vehicle.vehicle_number}</td>`;
+            const driver = vehicle.vehicle_number;
+            const owner = ownerDriverMap.get(driver) || 'Unknown';
+            row.innerHTML = `<td>${driver}</td><td>${owner}</td>`;
             liveFeedData.appendChild(row);
           });
         } else {
@@ -57,3 +80,4 @@
 
 </body>
 </html>
+
