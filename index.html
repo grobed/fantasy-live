@@ -25,7 +25,20 @@
   // Driver-Owner mapping
 const ownerDriverMap = {
   "Kyle Larson": "David Lee Grobe",
-  "Ty Gibbs": "Bobby Grobe (#1)"
+  "William Byron": "Brian Rye (#2)",
+  "Tyler Reddick": "Mark Almaguer",
+  "Christopher Bell": "Bobby Grobe (#2)",
+  "Ryan Blaney": "Susan Grobe",
+  "Denny Hamlin": "Billy Grobe",
+  "Kyle Busch": "Jeff Lindhorst",
+  "Ty Gibbs": "Bobby Grobe (#1)",
+  "Martin Truex Jr": "Daniel Grobe",
+  "Ross Chastain": "Austin Rye",
+  "Chase Elliott": "Travis Penny",
+  "Bubba Wallace": "Tommy Rye",
+  "Joey Logano": "Connor Rye",
+  "Chris Buescher": "Brian Rye (#1)",
+  "Alex Bowman": "Kris Rye"
   // Add more mappings as needed
 };
 
@@ -47,7 +60,7 @@ const ownerDriverMap = {
 // Populate table with vehicle numbers and owners
 data.vehicles.forEach(vehicle => {
   const row = document.createElement('tr');
-  const owner = ownerDriverMap[vehicle.driver.full_name] || "Unknown Owner";
+  const owner = ownerDriverMap[vehicle.driver.full_name] || "-";
   row.innerHTML = `<td>${vehicle.vehicle_number}</td><td>${owner}</td>`;
   liveFeedData.appendChild(row);
 });
