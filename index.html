@@ -44,14 +44,14 @@ const ownerDriverMap = {
           // Clear existing table rows
           liveFeedData.innerHTML = '';
 
-          // Populate table with vehicle numbers and owners
-          data.vehicles.forEach(vehicle => {
-            const row = document.createElement('tr');
-            const driver = vehicle.vehicle_number;
-            const owner = driverOwnerMap.get(driver) || 'Unknown';
-            row.innerHTML = `<td>${driver}</td><td>${owner}</td>`;
-            liveFeedData.appendChild(row);
-          });
+// Populate table with vehicle numbers and owners
+data.vehicles.forEach(vehicle => {
+  const row = document.createElement('tr');
+  const owner = ownerDriverMap[vehicle.driver.full_name] || "Unknown Owner";
+  row.innerHTML = `<td>${vehicle.vehicle_number}</td><td>${owner}</td>`;
+  liveFeedData.appendChild(row);
+});
+
         } else {
           console.error('Invalid JSON structure or missing data.');
         }
