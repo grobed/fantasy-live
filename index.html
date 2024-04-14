@@ -22,8 +22,8 @@
 <p>Last Updated: <span id="lastUpdate"></span></p>
 
 <script>
-  // Owner-Driver mapping
-  const ownerDriverMap = new Map([
+  // Driver-Owner mapping
+  const driverOwnerMap = new Map([
     ["Kyle Larson", "David Lee Grobe"],
     ["William Byron", "Brian Rye (#2)"],
     ["Tyler Reddick", "Mark Almaguer"],
@@ -60,7 +60,7 @@
           data.vehicles.forEach(vehicle => {
             const row = document.createElement('tr');
             const driver = vehicle.vehicle_number;
-            const owner = ownerDriverMap.get(driver) || 'Unknown';
+            const owner = driverOwnerMap.get(driver) || 'Unknown';
             row.innerHTML = `<td>${driver}</td><td>${owner}</td>`;
             liveFeedData.appendChild(row);
           });
@@ -80,4 +80,5 @@
 
 </body>
 </html>
+
 
