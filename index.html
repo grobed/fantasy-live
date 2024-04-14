@@ -23,23 +23,11 @@
 
 <script>
   // Driver-Owner mapping
-  const driverOwnerMap = new Map([
-    ["David Lee Grobe","Kyle Larson"],
-    ["William Byron", "Brian Rye (#2)"],
-    ["Tyler Reddick", "Mark Almaguer"],
-    ["Christopher Bell", "Bobby Grobe (#2)"],
-    ["Ryan Blaney", "Susan Grobe"],
-    ["Denny Hamlin", "Billy Grobe"],
-    ["Kyle Busch", "Jeff Lindhorst"],
-    ["Ty Gibbs", "Bobby Grobe (#1)"],
-    ["Martin Truex Jr", "Daniel Grobe"],
-    ["Ross Chastain", "Austin Rye"],
-    ["Chase Elliott", "Travis Penny"],
-    ["Bubba Wallace", "Tommy Rye"],
-    ["Joey Logano", "Connor Rye"],
-    ["Chris Buescher", "Brian Rye (#1)"],
-    ["Alex Bowman", "Kris Rye"]
-  ]);
+const ownerDriverMap = {
+  "Kyle Larson": "David Lee Grobe",
+  "Ty Gibbs": "Bobby Grobe (#1)"
+  // Add more mappings as needed
+};
 
   function fetchLiveFeed() {
     fetch('https://cf.nascar.com/live/feeds/live-feed.json')
