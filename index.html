@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NASCAR Live Feed</title>
+</head>
+<body>
+
+<h2>Lap Number: <span id="lapNumber"></span></h2>
+
+<table border="1">
+  <thead>
+    <tr>
+      <th>Vehicle Number</th>
+    </tr>
+  </thead>
+  <tbody id="liveFeedData"></tbody>
+
+<p>Last Updated: <span id="lastUpdate"></span></p>
+
+<script>
+  function fetchLiveFeed() {
+    fetch('https://cf.nascar.com/live/feeds/live-feed.json')
+      .then(response => response.json())
+      .then(data => {
+        const lapNumberElement = document.getElementById('lapNumber');
+        const liveFeedData = document.getElementById('liveFeedData');
+        const lastUpdateElement = document.getElementById('lastUpdate');
+        
+        if (data && data.lap_number && Array.isArray(data.vehicles)) {
+          lapNumberElement.textContent = data.lap_number;
+          lastUpdateElement.textContent = new Date().toLocaleTimeString();
+
+          // Clear existing table rows
+          liveFeedData.innerHTML = '';
+
+          // Populate table with vehicle numbers
+          data.vehicles.forEach(vehicle => {
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${vehicle.vehicle_number}</td>`;
+            liveFeedData.appendChild(row);
+          });
+        } else {
+          console.error('Invalid JSON structure or missing data.');
+        }
+      })
+      .catch(error => console.error('Error fetching live feed:', error));
+  }
+
+  // Initial fetch
+  fetchLiveFeed();
+
+  // Set interval for auto-updating every 60 seconds
+  setInterval(fetchLiveFeed, 60000);
+</script>
+
+</body>
+</html>
