@@ -3,16 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NASCAR Live Feed</title>
+  <title>NASCAR Live Feed with Points</title>
 </head>
 <body>
 
+<!-- Lap Number Table -->
 <h2>Lap Number: <span id="lapNumber"></span></h2>
 
+<h2>Vehicle Data</h2>
 <table border="1">
   <thead>
     <tr>
       <th>Vehicle Number</th>
+      <th>Driver</th>
       <th>Owner</th>
     </tr>
   </thead>
@@ -21,6 +24,7 @@
 
 <p>Last Updated: <span id="lastUpdate"></span></p>
 
+<!-- Owner Points Table -->
 <h2>Owner Points Table</h2>
 <table border="1">
   <thead>
@@ -35,23 +39,29 @@
 
 <p>Last Updated: <span id="lastUpdatePoints"></span></p>
 
-  
 <script>
-  // Driver-Owner mapping
-const ownerDriverMap = {
-"Shane Van Gisbergen":"Bobby Grobe (#2)",
-"Tyler Reddick":"Brian Rye (#1)",
-"Kyle Larson":"Daniel Grobe",
-"Joey Logano":"David Lee Grobe",
-"Chase Elliott":"Susan Grobe",
-"William Byron":"Travis Penny",
-"Austin Cindric":"Tommy Rye",
-"Alex Bowman":"Jeff Lindhorst",
-  // Add more mappings as needed
-};
+  // Driver to Owner Mapping
+  const ownerDriverMapping = {
+    "Kyle Larson": "David Lee Grobe",
+    "William Byron": "Brian Rye (#2)",
+    "Tyler Reddick": "Mark Almaguer",
+    "Christopher Bell": "Bobby Grobe (#2)",
+    "Ryan Blaney": "Susan Grobe",
+    "Denny Hamlin": "Billy Grobe",
+    "Kyle Busch": "Jeff Lindhorst",
+    "Ty Gibbs": "Bobby Grobe (#1)",
+    "Martin Truex Jr.": "Daniel Grobe",
+    "Ross Chastain": "Austin Rye",
+    "Chase Elliott": "Travis Penny",
+    "Bubba Wallace": "Tommy Rye",
+    "Joey Logano": "Connor Rye",
+    "Chris Buescher": "Brian Rye (#1)",
+    "Alex Bowman": "Kris Rye"
+  };
 
+  // Fetch live race feed (Lap and Vehicle Data)
   function fetchLiveFeed() {
-    fetch('https://cf.nascar.com/live/feeds/live-feed.json')
+    fetch('https://cf.nascar.com/live/feeds/live-feed.json')  // Replace with actual URL
       .then(response => response.json())
       .then(data => {
         const lapNumberElement = document.getElementById('lapNumber');
@@ -65,14 +75,15 @@ const ownerDriverMap = {
           // Clear existing table rows
           liveFeedData.innerHTML = '';
 
-// Populate table with vehicle numbers and owners
-data.vehicles.forEach(vehicle => {
-  const row = document.createElement('tr');
-  const owner = ownerDriverMap[vehicle.driver.full_name] || "-";
-  row.innerHTML = `<td>${vehicle.vehicle_number}</td><td>${owner}</td>`;
-  liveFeedData.appendChild(row);
-});
+          // Populate table with vehicle numbers, drivers, and owners
+          data.vehicles.forEach(vehicle => {
+            const driverName = vehicle.driver.full_name;
+            const ownerName = ownerDriverMapping[driverName] || 'Unknown';
 
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${vehicle.vehicle_number}</td><td>${driverName}</td><td>${ownerName}</td>`;
+            liveFeedData.appendChild(row);
+          });
         } else {
           console.error('Invalid JSON structure or missing data.');
         }
@@ -80,14 +91,9 @@ data.vehicles.forEach(vehicle => {
       .catch(error => console.error('Error fetching live feed:', error));
   }
 
-  // Initial fetch
-  fetchLiveFeed();
-
-  // Set interval for auto-updating every 60 seconds
-  setInterval(fetchLiveFeed, 60000);
-
-function fetchPointsFeed() {
-    fetch('https://cf.nascar.com/live/feeds/series_1/5424/live_points.json')  // Replace this URL with the actual live points feed
+  // Fetch live points feed (Owner Points Data)
+  function fetchPointsFeed() {
+    fetch('https://cf.nascar.com/live/feeds/series_1/5424/live_points.json')  // Actual URL
       .then(response => response.json())
       .then(data => {
         const ownerPointsTable = document.getElementById('ownerPointsTable');
@@ -97,32 +103,36 @@ function fetchPointsFeed() {
         // Clear the table
         ownerPointsTable.innerHTML = '';
 
-        data.vehicles.forEach(vehicle => {
-          const driverName = vehicle.driver.full_name;
-          const pointsEarned = vehicle.points_earned_this_race || 0;  // Handle if points are missing
+        if (Array.isArray(data)) {
+          // Populate table with owner, driver, and points earned
+          data.forEach(vehicle => {
+            const driverName = `${vehicle.first_name} ${vehicle.last_name.split(" (")[0]}`;  // Extract driver name without "(P)"
+            const pointsEarned = vehicle.points_earned_this_race || 0;
 
-          if (ownerDriverMapping[driverName]) {
-            const owner = ownerDriverMapping[driverName];
+            if (ownerDriverMapping[driverName]) {
+              const owner = ownerDriverMapping[driverName];
 
-            // Create a new row for the owner points table
-            const row = document.createElement('tr');
-            row.innerHTML = `<td>${owner}</td><td>${driverName}</td><td>${pointsEarned}</td>`;
-            ownerPointsTable.appendChild(row);
-          }
-        });
+              // Create a new row for the owner points table
+              const row = document.createElement('tr');
+              row.innerHTML = `<td>${owner}</td><td>${driverName}</td><td>${pointsEarned}</td>`;
+              ownerPointsTable.appendChild(row);
+            }
+          });
+        } else {
+          console.error('Invalid points data structure.');
+        }
       })
       .catch(error => console.error('Error fetching points feed:', error));
   }
 
-  // Initial fetch
+  // Initial fetch for both tables
+  fetchLiveFeed();
   fetchPointsFeed();
 
   // Set interval for auto-updating every 60 seconds
+  setInterval(fetchLiveFeed, 60000);
   setInterval(fetchPointsFeed, 60000);
-
 </script>
 
 </body>
 </html>
-
-
