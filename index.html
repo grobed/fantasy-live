@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NASCAR Live Feed with Points</title>
+  <title>NASCAR Live Feed with Points and Season Totals</title>
 </head>
 <body>
 
@@ -32,6 +32,7 @@
       <th>Owner</th>
       <th>Driver</th>
       <th>Points Earned This Race</th>
+      <th>Season Total Points</th>
     </tr>
   </thead>
   <tbody id="ownerPointsTable"></tbody>
@@ -40,23 +41,23 @@
 <p>Last Updated: <span id="lastUpdatePoints"></span></p>
 
 <script>
-  // Driver to Owner Mapping
+  // Owner-Driver Mapping with Season Totals
   const ownerDriverMapping = {
-    "Kyle Larson": "David Lee Grobe",
-    "William Byron": "Brian Rye (#2)",
-    "Tyler Reddick": "Mark Almaguer",
-    "Christopher Bell": "Bobby Grobe (#2)",
-    "Ryan Blaney": "Susan Grobe",
-    "Denny Hamlin": "Billy Grobe",
-    "Kyle Busch": "Jeff Lindhorst",
-    "Ty Gibbs": "Bobby Grobe (#1)",
-    "Martin Truex Jr.": "Daniel Grobe",
-    "Ross Chastain": "Austin Rye",
-    "Chase Elliott": "Travis Penny",
-    "Bubba Wallace": "Tommy Rye",
-    "Joey Logano": "Connor Rye",
-    "Chris Buescher": "Brian Rye (#1)",
-    "Alex Bowman": "Kris Rye"
+    "Kyle Larson": { owner: "David Lee Grobe", seasonTotal: 1200 },
+    "William Byron": { owner: "Brian Rye (#2)", seasonTotal: 1250 },
+    "Tyler Reddick": { owner: "Mark Almaguer", seasonTotal: 1150 },
+    "Christopher Bell": { owner: "Bobby Grobe (#2)", seasonTotal: 1225 },
+    "Ryan Blaney": { owner: "Susan Grobe", seasonTotal: 1185 },
+    "Denny Hamlin": { owner: "Billy Grobe", seasonTotal: 1240 },
+    "Kyle Busch": { owner: "Jeff Lindhorst", seasonTotal: 1105 },
+    "Ty Gibbs": { owner: "Bobby Grobe (#1)", seasonTotal: 980 },
+    "Martin Truex Jr.": { owner: "Daniel Grobe", seasonTotal: 1120 },
+    "Ross Chastain": { owner: "Austin Rye", seasonTotal: 1085 },
+    "Chase Elliott": { owner: "Travis Penny", seasonTotal: 1195 },
+    "Bubba Wallace": { owner: "Tommy Rye", seasonTotal: 1160 },
+    "Joey Logano": { owner: "Connor Rye", seasonTotal: 1210 },
+    "Chris Buescher": { owner: "Brian Rye (#1)", seasonTotal: 1100 },
+    "Alex Bowman": { owner: "Kris Rye", seasonTotal: 1130 }
   };
 
   // Fetch live race feed (Lap and Vehicle Data)
@@ -78,10 +79,10 @@
           // Populate table with vehicle numbers, drivers, and owners
           data.vehicles.forEach(vehicle => {
             const driverName = vehicle.driver.full_name;
-            const ownerName = ownerDriverMapping[driverName] || 'Unknown';
+            const ownerInfo = ownerDriverMapping[driverName] || { owner: 'Unknown', seasonTotal: 0 };
 
             const row = document.createElement('tr');
-            row.innerHTML = `<td>${vehicle.vehicle_number}</td><td>${driverName}</td><td>${ownerName}</td>`;
+            row.innerHTML = `<td>${vehicle.vehicle_number}</td><td>${driverName}</td><td>${ownerInfo.owner}</td>`;
             liveFeedData.appendChild(row);
           });
         } else {
@@ -104,17 +105,18 @@
         ownerPointsTable.innerHTML = '';
 
         if (Array.isArray(data)) {
-          // Populate table with owner, driver, and points earned
+          // Populate table with owner, driver, and points earned this race and update season total
           data.forEach(vehicle => {
             const driverName = `${vehicle.first_name} ${vehicle.last_name.split(" (")[0]}`;  // Extract driver name without "(P)"
             const pointsEarned = vehicle.points_earned_this_race || 0;
 
             if (ownerDriverMapping[driverName]) {
-              const owner = ownerDriverMapping[driverName];
+              const ownerInfo = ownerDriverMapping[driverName];
+              ownerInfo.seasonTotal += pointsEarned;  // Update season total
 
               // Create a new row for the owner points table
               const row = document.createElement('tr');
-              row.innerHTML = `<td>${owner}</td><td>${driverName}</td><td>${pointsEarned}</td>`;
+              row.innerHTML = `<td>${ownerInfo.owner}</td><td>${driverName}</td><td>${pointsEarned}</td><td>${ownerInfo.seasonTotal}</td>`;
               ownerPointsTable.appendChild(row);
             }
           });
