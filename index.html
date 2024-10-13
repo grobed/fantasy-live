@@ -105,7 +105,7 @@
         if (Array.isArray(data)) {
           // Update season total and collect data for sorting
           data.forEach(vehicle => {
-            const driverName = `${vehicle.first_name} ${vehicle.last_name.replace(/[\s\(\)\*#Pip]/g, '').trim()}`;
+            const driverName = `${vehicle.first_name.replace(/[\*\#]/g, '').trim()} ${vehicle.last_name.replace(/[\s\(\)\*#Pip]/g, '').trim()}`;
             const pointsEarned = vehicle.points_earned_this_race || 0;
 
             if (ownerDriverMapping[driverName]) {
