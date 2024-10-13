@@ -33,6 +33,7 @@
       <th>Driver</th>
       <th>Points Earned This Race</th>
       <th>Season Total Points</th>
+      <th>Points +/- from 8th Place</th>
     </tr>
   </thead>
   <tbody id="ownerPointsTable"></tbody>
@@ -104,8 +105,10 @@
         // Clear the table
         ownerPointsTable.innerHTML = '';
 
+        let driversPoints = [];
+
         if (Array.isArray(data)) {
-          // Populate table with owner, driver, and points earned this race and update season total
+          // Update season total and collect data for sorting
           data.forEach(vehicle => {
             const driverName = `${vehicle.first_name} ${vehicle.last_name.split(" (")[0]}`;  // Extract driver name without "(P)"
             const pointsEarned = vehicle.points_earned_this_race || 0;
@@ -113,12 +116,36 @@
             if (ownerDriverMapping[driverName]) {
               const ownerInfo = ownerDriverMapping[driverName];
               ownerInfo.seasonTotal += pointsEarned;  // Update season total
-
-              // Create a new row for the owner points table
-              const row = document.createElement('tr');
-              row.innerHTML = `<td>${ownerInfo.owner}</td><td>${driverName}</td><td>${pointsEarned}</td><td>${ownerInfo.seasonTotal}</td>`;
-              ownerPointsTable.appendChild(row);
+              
+              // Collect the driver, owner, and updated season total for sorting
+              driversPoints.push({
+                driverName: driverName,
+                owner: ownerInfo.owner,
+                pointsEarned: pointsEarned,
+                seasonTotal: ownerInfo.seasonTotal
+              });
             }
+          });
+
+          // Sort by seasonTotal in descending order
+          driversPoints.sort((a, b) => b.seasonTotal - a.seasonTotal);
+
+          // Get the season total of the 8th place driver
+          const eighthPlacePoints = driversPoints.length >= 8 ? driversPoints[7].seasonTotal : 0;
+
+          // Populate the sorted table and show points +/- from 8th place
+          driversPoints.forEach(driver => {
+            const pointsDifference = driver.seasonTotal - eighthPlacePoints;
+
+            const row = document.createElement('tr');
+            row.innerHTML = `
+              <td>${driver.owner}</td>
+              <td>${driver.driverName}</td>
+              <td>${driver.pointsEarned}</td>
+              <td>${driver.seasonTotal}</td>
+              <td>${pointsDifference >= 0 ? '+' : ''}${pointsDifference}</td>
+            `;
+            ownerPointsTable.appendChild(row);
           });
         } else {
           console.error('Invalid points data structure.');
