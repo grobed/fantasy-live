@@ -87,7 +87,7 @@ data.vehicles.forEach(vehicle => {
   setInterval(fetchLiveFeed, 60000);
 
 function fetchPointsFeed() {
-    fetch('https://cf.nascar.com/live/feeds/live-points-feed.json')  // Replace this URL with the actual live points feed
+    fetch('https://cf.nascar.com/live/feeds/series_1/5424/live_points.json')  // Replace this URL with the actual live points feed
       .then(response => response.json())
       .then(data => {
         const ownerPointsTable = document.getElementById('ownerPointsTable');
