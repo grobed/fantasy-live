@@ -118,10 +118,20 @@
                 document.getElementById('race-status').textContent = `Stage ${data.stage.stage_num}`;
                 document.getElementById('lap-counter').textContent = `Lap ${data.lap_number} of ${data.laps_in_race}`;
 
+                const tbody = document.querySelector('#pickem-grid tbody');
+                tbody.innerHTML = '';
+
                 const playerScores = new Map(players.map(player => [player.name, 0]));
                 data.vehicles.forEach(vehicle => {
+                    const row = tbody.insertRow();
+
+                    row.innerHTML = `<td class="position-col">${vehicle.running_position}</td><td class="car-number">${vehicle.vehicle_number}</td>`;
+
                     players.forEach(player => {
+                        const cell = row.insertCell();
                         if (player.picks.includes(vehicle.vehicle_number)) {
+                            cell.textContent = vehicle.vehicle_number;
+                            cell.className = 'player-pick';
                             playerScores.set(player.name, playerScores.get(player.name) + vehicle.running_position);
                         }
                     });
