@@ -42,7 +42,6 @@
             color: white;
             position: sticky;
             top: 0;
-            cursor: pointer;
         }
         th .score {
             font-size: 1.2em;
@@ -64,10 +63,6 @@
         .player-pick {
             background-color: #e2e8f0;
         }
-        .last-fetch {
-            font-size: 0.9em;
-            color: #555;
-        }
     </style>
 </head>
 <body>
@@ -87,10 +82,6 @@
             </thead>
             <tbody></tbody>
         </table>
-    </div>
-
-    <div class="last-fetch">
-        Last fetch time: <span id="last-fetch-time">N/A</span>
     </div>
 
     <script>
@@ -130,12 +121,7 @@
                 const tbody = document.querySelector('#pickem-grid tbody');
                 tbody.innerHTML = '';
 
-                // Initialize player scores
-                const playerScores = players.map(player => ({
-                    name: player.name,
-                    score: 0
-                }));
-
+                const playerScores = new Map(players.map(player => [player.name, 0]));
                 data.vehicles.forEach(vehicle => {
                     const row = tbody.insertRow();
 
@@ -146,36 +132,15 @@
                         if (player.picks.includes(vehicle.vehicle_number)) {
                             cell.textContent = vehicle.vehicle_number;
                             cell.className = 'player-pick';
-                            const playerIndex = playerScores.findIndex(p => p.name === player.name);
-                            playerScores[playerIndex].score += vehicle.running_position;
+                            playerScores.set(player.name, playerScores.get(player.name) + vehicle.running_position);
                         }
                     });
                 });
 
-                // Sort players based on their scores (ascending)
-                playerScores.sort((a, b) => a.score - b.score);
-
-                // Update the header columns and the player scores
-                playerScores.forEach((player, index) => {
+                players.forEach((player, index) => {
                     const scoreSpan = headerRow.children[index + 2].querySelector('.score');
-                    scoreSpan.textContent = player.score;
+                    scoreSpan.textContent = playerScores.get(player.name);
                 });
-
-                // Sort the rows based on the player order
-                const rows = Array.from(tbody.rows);
-                rows.sort((rowA, rowB) => {
-                    const scoreA = rowA.querySelector(`td:nth-child(${playerScores.findIndex(p => p.name === rowA.cells[1].textContent) + 3}`).textContent;
-                    const scoreB = rowB.querySelector(`td:nth-child(${playerScores.findIndex(p => p.name === rowB.cells[1].textContent) + 3}`).textContent;
-                    return parseInt(scoreA) - parseInt(scoreB);
-                });
-
-                // Append the sorted rows back to tbody
-                rows.forEach(row => tbody.appendChild(row));
-
-                // Update last fetch time
-                const lastFetchTime = new Date().toLocaleTimeString();
-                document.getElementById('last-fetch-time').textContent = lastFetchTime;
-
             } catch (error) {
                 console.error('Error fetching race data:', error);
             }
