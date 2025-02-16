@@ -118,6 +118,19 @@
                 document.getElementById('race-status').textContent = `Stage ${data.stage.stage_num}`;
                 document.getElementById('lap-counter').textContent = `Lap ${data.lap_number} of ${data.laps_in_race}`;
 
+                const playerScores = new Map(players.map(player => [player.name, 0]));
+                data.vehicles.forEach(vehicle => {
+                    players.forEach(player => {
+                        if (player.picks.includes(vehicle.vehicle_number)) {
+                            playerScores.set(player.name, playerScores.get(player.name) + vehicle.running_position);
+                        }
+                    });
+                });
+
+                players.forEach((player, index) => {
+                    const scoreSpan = headerRow.children[index + 2].querySelector('.score');
+                    scoreSpan.textContent = playerScores.get(player.name);
+                });
             } catch (error) {
                 console.error('Error fetching race data:', error);
             }
