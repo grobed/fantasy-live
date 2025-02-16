@@ -137,10 +137,10 @@
                     });
                 });
 
-                players.forEach((player, index) => {
-                    const scoreSpan = headerRow.children[index + 2].querySelector('.score');
-                    scoreSpan.textContent = playerScores.get(player.name);
-                });
+                const playerColumns = Array.from(headerRow.children).slice(2);
+                playerColumns.sort((a, b) => parseInt(a.querySelector('.score').textContent) - parseInt(b.querySelector('.score').textContent));
+
+                playerColumns.forEach(col => headerRow.appendChild(col));
             } catch (error) {
                 console.error('Error fetching race data:', error);
             }
