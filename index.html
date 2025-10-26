@@ -124,7 +124,7 @@
           driversPoints.sort((a, b) => b.seasonTotal - a.seasonTotal);
 
           // Get the season total of the 8th place driver
-          const eighthPlacePoints = driversPoints.length >= 8 ? driversPoints[7].seasonTotal : 0;
+          const eighthPlacePoints = driversPoints.length >= 4 ? driversPoints[3].seasonTotal : 0;
 
           // Populate the sorted table and show points +/- from 8th place
           driversPoints.forEach(driver => {
