@@ -1,197 +1,160 @@
 <!DOCTYPE html>
-<html>
+<html lang="en">
 <head>
-    <title>NASCAR Pick'em Scoreboard</title>
-    <style>
-        body {
-            font-family: system-ui, -apple-system, sans-serif;
-            max-width: 1400px;
-            margin: 0 auto;
-            padding: 20px;
-            background-color: #f5f5f5;
-        }
-        .race-info {
-            margin-bottom: 20px;
-            padding: 15px;
-            background: #1a365d;
-            color: white;
-            border-radius: 8px;
-            display: flex;
-            justify-content: space-between;
-        }
-        .card {
-            background: white;
-            border-radius: 8px;
-            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
-            padding: 20px;
-            overflow-x: auto;
-        }
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            table-layout: fixed;
-        }
-        th, td {
-            border: 1px solid #ddd;
-            padding: 8px;
-            text-align: center;
-            min-width: 80px;
-        }
-        th {
-            background-color: #1a365d;
-            color: white;
-            position: sticky;
-            top: 0;
-        }
-        th .score {
-            font-size: 1.2em;
-            font-weight: bold;
-            color: #ffd700;
-        }
-        tr:nth-child(even) {
-            background-color: #f0f4f8;
-        }
-        .position-col {
-            background-color: #1a365d;
-            color: white;
-            font-weight: bold;
-        }
-        .car-number {
-            color: #666;
-            font-size: 0.9em;
-        }
-        .player-pick {
-            background-color: #e2e8f0;
-        }
-    </style>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>NASCAR Live Feed with Points and Season Totals</title>
 </head>
 <body>
-    <div class="race-info">
-        <div id="race-name"></div>
-        <div id="race-status"></div>
-        <div id="lap-counter"></div>
-    </div>
 
-    <div class="card">
-        <table id="pickem-grid">
-            <thead>
-                <tr id="header-row">
-                    <th style="width: 100px">Position</th>
-                    <th style="width: 80px">Car #</th>
-                </tr>
-            </thead>
-            <tbody></tbody>
-        </table>
-    </div>
+<!-- Lap Number Table -->
+<h2>Lap Number: <span id="lapNumber"></span></h2>
 
- <div class="last-fetch">
-        Last fetch time: <span id="last-fetch-time">N/A</span>
-    </div>
-    
-    <script>
-       const players = [
-   { name: "Kris", picks: [ "23","11","38","24","71","7","40","34","4","60"]},
-{ name: "Breanna", picks: [ "43","24","17","3","5","8","7","12","54","38"]},
-{ name: "Brian", picks: [ "6","17","22","2","8","41","9","5","34","1"]},
-{ name: "Jana", picks: [ "5","8","9","6","84","12","11","43","22","16"]},
-{ name: "Connor", picks: [ "22","12","6","24","8","48","23","4","9","43"]},
-{ name: "Austin", picks: [ "17","1","16","12","9","5","20","88","8","4"]},
-{ name: "Jeff", picks: [ "56","22","17","16","48","45","12","77","8","2"]},
-{ name: "Travis", picks: [ "2","23","17","11","01","34","8","71","51","41"]},
-{ name: "Nate", picks: [ "99","7","47","71","20","24","11","1","45","2"]},
-{ name: "Tommy", picks: [ "19","2","24","1","22","45","34","12","8","17"]},
-{ name: "Dew", picks: [ "23","48","12","2","17","6","56","01","71","16"]},
-{ name: "Susan", picks: [ "8","5","40","12","22","11","24","23","6","71"]},
-{ name: "Ash", picks: [ "24","10","2","11","22","45","16","23","5","1"]},
-{ name: "Alora", picks: [ "11","22","9","12","8","6","24","56","23","5"]},
-];
+<h2>Vehicle Data</h2>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Vehicle Number</th>
+      <th>Driver</th>
+      <th>Owner</th>
+    </tr>
+  </thead>
+  <tbody id="liveFeedData"></tbody>
+</table>
 
-// Create initial header row with position and car number columns
-const headerRow = document.getElementById('header-row');
-players.forEach(player => {
-    const th = document.createElement('th');
-    th.innerHTML = `${player.name}<br><span class="score">0</span>`;
-    headerRow.appendChild(th);
-});
+<p>Last Updated: <span id="lastUpdate"></span></p>
 
-async function updateRaceData() {
-    try {
-        const response = await fetch('https://cf.nascar.com/live/feeds/live-feed.json');
-        const data = await response.json();
+<!-- Owner Points Table -->
+<h2>Owner Points Table</h2>
+<table border="1">
+  <thead>
+    <tr>
+      <th>Owner</th>
+      <th>Driver</th>
+      <th>Points Earned This Race</th>
+      <th>Season Total Points</th>
+      <th>Points +/- from 4th Place</th>
+    </tr>
+  </thead>
+  <tbody id="ownerPointsTable"></tbody>
+</table>
 
-        document.getElementById('race-name').textContent = data.run_name;
-        document.getElementById('race-status').textContent = `Stage ${data.stage.stage_num}`;
-        document.getElementById('lap-counter').textContent = `Lap ${data.lap_number} of ${data.laps_in_race}`;
+<p>Last Updated: <span id="lastUpdatePoints"></span></p>
 
-        const tbody = document.querySelector('#pickem-grid tbody');
-        tbody.innerHTML = '';
+<script>
+  // Owner-Driver Mapping with Season Totals
+  const ownerDriverMapping = {
+"Chase Elliott":{ owner: "Mark Almaguer", seasonTotal: 143},
+"Kyle Larson":{ owner: "Bobby Grobe (#1)", seasonTotal: 134},
+"Ryan Blaney":{ owner: "David Lee Grobe", seasonTotal: 142},
+"William Byron":{ owner: "Tommy Rye", seasonTotal: 167},
+"Joey Logano":{ owner: "Jeff Lindhorst", seasonTotal: 126},
+"Ty Gibbs":{ owner: "Kris Rye", seasonTotal: 117},
+"Denny Hamlin":{ owner: "Travis Penny", seasonTotal: 172},
+"Chase Briscoe":{ owner: "Bobby Grobe (#2)", seasonTotal: 127},
+  };
 
-        // Calculate scores and store player data
-        const playerData = players.map(player => {
-            let score = 0;
-            const pickData = data.vehicles.filter(vehicle => 
-                player.picks.includes(vehicle.vehicle_number)
-            ).map(vehicle => ({
-                carNumber: vehicle.vehicle_number,
-                position: vehicle.running_position
-            }));
-            
-            score = pickData.reduce((sum, vehicle) => sum + vehicle.position, 0);
-            
-            return {
-                name: player.name,
-                score: score,
-                picks: player.picks,
-                pickData: pickData
-            };
-        });
+  // Fetch live race feed (Lap and Vehicle Data)
+  function fetchLiveFeed() {
+    fetch('https://cf.nascar.com/live/feeds/live-feed.json')  // Replace with actual URL
+      .then(response => response.json())
+      .then(data => {
+        const lapNumberElement = document.getElementById('lapNumber');
+        const liveFeedData = document.getElementById('liveFeedData');
+        const lastUpdateElement = document.getElementById('lastUpdate');
+        
+        if (data && data.lap_number && Array.isArray(data.vehicles)) {
+          lapNumberElement.textContent = data.lap_number;
+          lastUpdateElement.textContent = new Date().toLocaleTimeString();
 
-        // Sort players by score (ascending)
-        playerData.sort((a, b) => a.score - b.score);
+          // Clear existing table rows
+          liveFeedData.innerHTML = '';
 
-        // Rebuild header row with sorted players
-        while (headerRow.children.length > 2) {
-            headerRow.removeChild(headerRow.lastChild);
+          // Populate table with vehicle numbers, drivers, and owners
+          data.vehicles.forEach(vehicle => {
+            const driverName = vehicle.driver.full_name.replace(/[\*\#]/g, '').trim(); // Cleaned name
+            const ownerInfo = ownerDriverMapping[driverName] || { owner: 'Unknown', seasonTotal: 0 };
+
+            const row = document.createElement('tr');
+            row.innerHTML = `<td>${vehicle.vehicle_number}</td><td>${driverName}</td><td>${ownerInfo.owner}</td>`;
+            liveFeedData.appendChild(row);
+          });
+        } else {
+          console.error('Invalid JSON structure or missing data.');
         }
-        
-        playerData.forEach(player => {
-            const th = document.createElement('th');
-            th.innerHTML = `${player.name}<br><span class="score">${player.score}</span>`;
-            headerRow.appendChild(th);
-        });
+      })
+      .catch(error => console.error('Error fetching live feed:', error));
+  }
 
-        // Create rows for vehicle data
-        data.vehicles.forEach(vehicle => {
-            const row = tbody.insertRow();
-            
-            // Add position and car number columns
+  // Fetch live points feed (Owner Points Data)
+  function fetchPointsFeed() {
+    fetch('https://cf.nascar.com/live/feeds/series_1/5424/live_points.json')  // Actual URL
+      .then(response => response.json())
+      .then(data => {
+        const ownerPointsTable = document.getElementById('ownerPointsTable');
+        const lastUpdatePointsElement = document.getElementById('lastUpdatePoints');
+        lastUpdatePointsElement.textContent = new Date().toLocaleTimeString();
+
+        // Clear the table
+        ownerPointsTable.innerHTML = '';
+
+        let driversPoints = [];
+
+        if (Array.isArray(data)) {
+          // Update season total and collect data for sorting
+          data.forEach(vehicle => {
+            const driverName = `${vehicle.first_name.replace(/[\*\#]/g, '').trim()} ${vehicle.last_name.replace(/[\*\#P]/g, '').trim()}`;
+            const pointsEarned = vehicle.points_earned_this_race || 0;
+
+            if (ownerDriverMapping[driverName]) {
+              const ownerInfo = ownerDriverMapping[driverName];
+              ownerInfo.seasonTotal += pointsEarned;  // Update season total
+              
+              // Collect the driver, owner, and updated season total for sorting
+              driversPoints.push({
+                driverName: driverName,
+                owner: ownerInfo.owner,
+                pointsEarned: pointsEarned,
+                seasonTotal: ownerInfo.seasonTotal
+              });
+            }
+          });
+
+          // Sort by seasonTotal in descending order
+          driversPoints.sort((a, b) => b.seasonTotal - a.seasonTotal);
+
+          // Get the season total of the 8th place driver
+          const eighthPlacePoints = driversPoints.length >= 4 ? driversPoints[3].seasonTotal : 0;
+
+          // Populate the sorted table and show points +/- from 8th place
+          driversPoints.forEach(driver => {
+            const pointsDifference = driver.seasonTotal - eighthPlacePoints;
+
+            const row = document.createElement('tr');
             row.innerHTML = `
-                <td class="position-col">${vehicle.running_position}</td>
-                <td class="car-number">${vehicle.vehicle_number}</td>
+              <td>${driver.owner}</td>
+              <td>${driver.driverName}</td>
+              <td>${driver.pointsEarned}</td>
+              <td>${driver.seasonTotal}</td>
+              <td>${pointsDifference >= 0 ? '+' : ''}${pointsDifference}</td>
             `;
+            ownerPointsTable.appendChild(row);
+          });
+        } else {
+          console.error('Invalid points data structure.');
+        }
+      })
+      .catch(error => console.error('Error fetching points feed:', error));
+  }
 
-            // Add cells for each player in sorted order
-            playerData.forEach(player => {
-                const cell = row.insertCell();
-                if (player.picks.includes(vehicle.vehicle_number)) {
-                    cell.textContent = vehicle.vehicle_number;
-                    cell.className = 'player-pick';
-                }
-            });
-        });
+  // Initial fetch for both tables
+  fetchLiveFeed();
+  fetchPointsFeed();
 
-// Update last fetch time
-                const lastFetchTime = new Date().toLocaleTimeString();
-                document.getElementById('last-fetch-time').textContent = lastFetchTime;
+  // Set interval for auto-updating every 60 seconds
+  setInterval(fetchLiveFeed, 60000);
+  setInterval(fetchPointsFeed, 60000);
+</script>
 
-        
-    } catch (error) {
-        console.error('Error fetching race data:', error);
-    }
-}
-
-updateRaceData();
-setInterval(updateRaceData, 15000);
-    </script>
 </body>
 </html>
