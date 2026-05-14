@@ -30,6 +30,31 @@ REFERER="https://www.nascar.com/"
 TMP="$(mktemp -d)"
 trap 'rm -rf "$TMP"' EXIT
 
+# Find a working Python. On Windows `python3` is often a Store-install stub
+# that prints an installer message and exits non-zero, so we test each
+# candidate by actually running it.
+PY=""
+for cand in python3 python py; do
+  if command -v "$cand" >/dev/null 2>&1; then
+    # `py` needs `-3`; everything else takes plain `-c`.
+    if [ "$cand" = "py" ]; then
+      if py -3 -c "import sys" >/dev/null 2>&1; then
+        PY="py -3"; break
+      fi
+    else
+      if "$cand" -c "import sys" >/dev/null 2>&1; then
+        PY="$cand"; break
+      fi
+    fi
+  fi
+done
+if [ -z "$PY" ]; then
+  echo "ERROR: no working Python interpreter found (tried python3, python, py -3)." >&2
+  echo "Install Python 3 (https://www.python.org/downloads/) and re-run." >&2
+  exit 1
+fi
+echo "Using Python: $PY"
+
 # Pretty-print one probe.
 # args: $1 label, $2 URL
 probe() {
@@ -45,7 +70,7 @@ probe() {
       "$url" || echo "000 0 -"
   )
 
-  keys="$(python3 - "$body" <<'PY' 2>/dev/null
+  keys="$($PY - "$body" <<'PY' 2>/dev/null
 import json, sys
 try:
     with open(sys.argv[1], 'rb') as f:
@@ -76,7 +101,7 @@ if [ -z "$RACE" ]; then
        -o "$TMP/sched.json" \
        "https://cf.nascar.com/cacher/${YEAR}/race_list_basic.json"
 
-  RACE="$(python3 - "$TMP/sched.json" "$SERIES" <<'PY'
+  RACE="$($PY - "$TMP/sched.json" "$SERIES" <<'PY'
 import json, sys
 try:
     d = json.load(open(sys.argv[1]))
