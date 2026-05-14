@@ -12,6 +12,8 @@ Consolidated reference of the undocumented Cloudflare-cached JSON feeds at
 
 Nothing here is invented — every URL pattern below appears verbatim in one or
 more of the repos. Line numbers refer to the state of each repo on 2026-05-13.
+Endpoints were live-verified on **2026-05-14** with the `verify-nascar-feeds.sh`
+script in this directory; see §6 for the actual probe results.
 
 ---
 
@@ -43,11 +45,16 @@ Three distinct path prefixes are referenced across the four repos:
 
 > **Note on the two "live" branches.** `pynascar` and `nascar-tracker` reach
 > live data via `/cacher/live/series_<id>/<race_id>/...`, while `NascarApi`
-> reaches it via `/live/feeds/...` without any series or race in the path. Both
-> are real and both work in the wild — the `/live/feeds/` form is the one the
-> nascar.com Race Center page polls directly, while `/cacher/live/...` mirrors
-> the same content under a per-race-namespaced URL that survives once the race
-> is over. See §5 Open questions.
+> reaches it via `/live/feeds/...` without any series or race in the path.
+> **Verification (2026-05-14) shows they are byte-for-byte aliases at the
+> global level:** `cf.nascar.com/cacher/live/live-feed.json` returned the
+> same 490-byte payload as `cf.nascar.com/live/feeds/live-feed.json`, and
+> `live-points.json` matched at 23 651 bytes across both paths. Likewise
+> `cf.nascar.com/cacher/{year}/{series}/{race}/lap-times.json` and
+> `cf.nascar.com/cacher/live/series_{series}/{race}/lap-times.json` returned
+> identical 305 115-byte payloads. The series-namespaced live form survives
+> in the cache once a race ends; the unnamespaced global form always reflects
+> the most recent session.
 
 ### Path parameters
 
@@ -130,8 +137,8 @@ Example:
 
 | URL template | Purpose | Source |
 |---|---|---|
-| `/{year}/{series_id}/{race_id}/lap-times.json` | Per-driver per-lap timing. Top-level `laps` array of `{ NASCARDriverID, Number, FullName, Manufacturer, Laps: [{ Lap, LapTime, RunningPos }] }`. | `pynascar/src/pynascar/core/base_api.py:45`; `jemorriso-nascar/config.json:2`; `jemorriso-nascar/src/nascar/nascar.py:39-40,75-79` |
-| `/{year}/{series_id}/{race_id}/lap-notes.json` | Race-control event log (the "events" feed): flag changes, warm-up notes, free-text comments per lap. Columns post-processing: `Lap`, `Flag_State`, `Flag`, `note`, `driver_ids`. | `pynascar/src/pynascar/core/base_api.py:61`; `pynascar/README.md:185-191` |
+| `/{year}/{series_id}/{race_id}/lap-times.json` | Per-driver per-lap timing. Top-level keys **verified 2026-05-14**: `laps` (array of `{ NASCARDriverID, Number, FullName, Manufacturer, Laps: [{ Lap, LapTime, RunningPos }] }`) **and** `flags` (a green/yellow/red ledger that none of the four repos consume). | `pynascar/src/pynascar/core/base_api.py:45`; `jemorriso-nascar/config.json:2`; `jemorriso-nascar/src/nascar/nascar.py:39-40,75-79` |
+| `/{year}/{series_id}/{race_id}/lap-notes.json` | Race-control event log (the "events" feed): flag changes, warm-up notes, free-text comments per lap. Verified response: single-key `{ laps: [...] }`. Columns post-processing: `Lap`, `Flag_State`, `Flag`, `note`, `driver_ids`. | `pynascar/src/pynascar/core/base_api.py:61`; `pynascar/README.md:185-191` |
 
 Examples:
 - `https://cf.nascar.com/cacher/2024/1/5544/lap-times.json`
@@ -142,7 +149,7 @@ Examples:
 
 | URL template | Purpose | Source |
 |---|---|---|
-| `/{year}/{series_id}/{race_id}/live-pit-data.json` | Per-stop pit timing — pit-in/out flag state, box stop/leave race time, tire changes per corner, pit-stop type, positions gained/lost, in/out travel duration. Note the `live-` prefix even when fetched from the historical `/cacher/` path. | `pynascar/src/pynascar/core/base_api.py:53`; columns documented at `pynascar/README.md:102-103` |
+| `/{year}/{series_id}/{race_id}/live-pit-data.json` | Per-stop pit timing — pit-in/out flag state, box stop/leave race time, tire changes per corner, pit-stop type, positions gained/lost, in/out travel duration. Note the `live-` prefix even when fetched from the historical `/cacher/` path. **2026-05-14 verification returned HTTP 403** for `cacher/2026/1/5593/live-pit-data.json` — see §7 open question #11; this endpoint may not be published immediately after every race. | `pynascar/src/pynascar/core/base_api.py:53`; columns documented at `pynascar/README.md:102-103` |
 
 Example: `https://cf.nascar.com/cacher/2024/1/5544/live-pit-data.json`
 
@@ -161,7 +168,7 @@ Examples:
 
 | URL template | Purpose | Source |
 |---|---|---|
-| `/drivers.json` | Master driver roster across all series. Response either is a flat array or is wrapped as `{ response: [...] }` (the `nascar-tracker` reader handles both). Per-driver fields: `Nascar_Driver_ID`, `First_Name`, `Last_Name`, `Team`, `Manufacturer` (CDN PNG URL — manufacturer extracted from filename), `Image`, `Image_Transparent`, `Badge_Image`, `Driver_Series` (slug — see series table). | `nascar-tracker/backend/routes/drivers.js:34-62`; `nascar-tracker/README.md:66` |
+| `/drivers.json` | Master driver roster across all series. **Verified 2026-05-14:** response is wrapped as `{ status, message, response: [...] }`; the driver array is in `response`. (`nascar-tracker/backend/routes/drivers.js:45` defensively reads `raw.response \|\| raw` to handle both this envelope and an older bare-array shape.) Per-driver fields: `Nascar_Driver_ID`, `First_Name`, `Last_Name`, `Team`, `Manufacturer` (CDN PNG URL — manufacturer extracted from filename), `Image`, `Image_Transparent`, `Badge_Image`, `Driver_Series` (slug — see series table). | `nascar-tracker/backend/routes/drivers.js:34-62`; `nascar-tracker/README.md:66` |
 
 Example: `https://cf.nascar.com/cacher/drivers.json`
 
@@ -169,10 +176,11 @@ Example: `https://cf.nascar.com/cacher/drivers.json`
 
 | URL template | Purpose | Source |
 |---|---|---|
-| `/{year}/{series_id}/{race_id}/lapAvg_nxs_practice_{session_number}.json` | Older endpoint that exposed practice lap averages. Only one instance found in the wild, referenced as a curiosity: 2019 Xfinity (`nxs`) race 4817 practice session 1. The `nxs` token in the filename hints at series-specific naming (`cup`, `nxs`, `trucks`). pynascar flags this as "this endpoint may not exist" — confirmed only via a single historical URL. | `pynascar/README.md:232` |
+| `/{year}/{series_id}/{race_id}/lapAvg_nxs_practice_{session_number}.json` | Older endpoint that exposed practice lap averages. The `nxs` token in the filename hints at series-specific naming (`cup`, `nxs`, `trucks`); the `_n` is the practice session index. **Verified 2026-05-14: the 2019 Xfinity reference still returns HTTP 200 (12 262 bytes, an array of 30 driver entries with keys `Number, NASCARDriverID, Driver, FullName, Manufacturer, Sponsor`).** Whether current-year analogues are published is untested. | `pynascar/README.md:232` |
 
-Documented example (do not assume the current-year analogue resolves):
-`https://cf.nascar.com/cacher/2019/2/4817/lapAvg_nxs_practice_1.json`
+Verified live (2026-05-14):
+`https://cf.nascar.com/cacher/2019/2/4817/lapAvg_nxs_practice_1.json` →
+`HTTP 200`, 12 262 B, array of 30 items.
 
 ---
 
@@ -186,16 +194,16 @@ Used by `pynascar` and `nascar-tracker`. The path template differs from
 digit. While a session is in progress these files mirror the per-race files
 under `/cacher/{year}/{series_id}/{race_id}/...`.
 
-| URL template | Purpose | Source |
-|---|---|---|
-| `/series_{series_id}/{race_id}/weekend-feed.json` | Live equivalent of §2.1. Updated mid-race. | `pynascar/src/pynascar/core/base_api.py:35` |
-| `/series_{series_id}/{race_id}/lap-times.json` | Live equivalent of §2.2 lap-times. | `pynascar/src/pynascar/core/base_api.py:43` |
-| `/series_{series_id}/{race_id}/lap-notes.json` | Live equivalent of §2.2 lap-notes (race-control event log). | `pynascar/src/pynascar/core/base_api.py:59` |
-| `/series_{series_id}/{race_id}/live-pit-data.json` | Live pit stop data. | `pynascar/src/pynascar/core/base_api.py:51` |
-| `/series_{series_id}/{race_id}/live-feed.json` | "Advanced driver stat" / per-vehicle live state — current running position, lap, flag, etc. See §4 for the response shape (same payload as `/live/feeds/live-feed.json`). pynascar uses this URL to populate `driver_data.driver_stats_advanced`. | `pynascar/src/pynascar/core/base_api.py:71`; column list in `pynascar/README.md:112-113` |
-| `/live-feed.json` | nascar-tracker also probes `live/live-feed.json` (no `series_x/race_id/` between `live/` and the file) to supplement its driver-number map. Whether the CDN actually serves a global file at this exact path is unclear — the call is wrapped in a try/catch and the parent comment ("Supplement with live feed data") suggests it is best-effort. | `nascar-tracker/backend/lib/nascarApi.js:74` |
-| `/live-points.json` | Live points standings (post-2024 stage points + race-day points). Used as the standings source by `nascar-tracker`. | `nascar-tracker/backend/routes/live.js:18`; `nascar-tracker/backend/routes/standings.js:10` |
-| `/live-pit-data.json` | Same content as the series-namespaced pit feed above, but at the global `/cacher/live/` root (no `series_x/race_id/`). | `nascar-tracker/backend/routes/live.js:28` |
+| URL template | Purpose | Verified 2026-05-14 (race 5593) | Source |
+|---|---|---|---|
+| `/series_{series_id}/{race_id}/weekend-feed.json` | Live equivalent of §2.1. Updated mid-race. | **403** (after race ended) | `pynascar/src/pynascar/core/base_api.py:35` |
+| `/series_{series_id}/{race_id}/lap-times.json` | Live equivalent of §2.2 lap-times. | **200** — 305 115 B, byte-identical to `cacher/2026/1/5593/lap-times.json`. The series-namespaced live form is preserved in the CDN after the race. | `pynascar/src/pynascar/core/base_api.py:43` |
+| `/series_{series_id}/{race_id}/lap-notes.json` | Live equivalent of §2.2 lap-notes (race-control event log). | **403** (after race ended) | `pynascar/src/pynascar/core/base_api.py:59` |
+| `/series_{series_id}/{race_id}/live-pit-data.json` | Live pit stop data. | **403** (after race ended) | `pynascar/src/pynascar/core/base_api.py:51` |
+| `/series_{series_id}/{race_id}/live-feed.json` | "Advanced driver stat" / per-vehicle live state — current running position, lap, flag, etc. See §4 for the response shape (same payload as `/live/feeds/live-feed.json`). pynascar uses this URL to populate `driver_data.driver_stats_advanced`. | **200** — 18 777 B; keys include `lap_number, elapsed_time, flag_state, race_id, run_id, laps_in_race, laps_to_go, vehicles, …` (+14 more). This is the final-frame snapshot the CDN keeps after the race. | `pynascar/src/pynascar/core/base_api.py:71`; column list in `pynascar/README.md:112-113` |
+| `/live-feed.json` | Global live feed at the `/cacher/live/` root (no `series_x/race_id/`). **Confirmed live 2026-05-14** — returns the same 490-byte payload as `/live/feeds/live-feed.json`, demonstrating the two paths are aliases. | **200** — 490 B, same keys as the series-namespaced live-feed. | `nascar-tracker/backend/lib/nascarApi.js:74` |
+| `/live-points.json` | Live points standings (post-2024 stage points + race-day points). Used as the standings source by `nascar-tracker`. | **200** — 23 651 B, array of 46 items with keys `bonus_points, car_number, delta_leader, delta_next, first_name, driver_id, …`. Byte-identical to `/live/feeds/live-points.json`. | `nascar-tracker/backend/routes/live.js:18`; `nascar-tracker/backend/routes/standings.js:10` |
+| `/live-pit-data.json` | Same content as the series-namespaced pit feed above, but at the global `/cacher/live/` root (no `series_x/race_id/`). | **200** — empty array (no live race in progress at probe time). | `nascar-tracker/backend/routes/live.js:28` |
 
 Examples:
 - `https://cf.nascar.com/cacher/live/series_1/5544/weekend-feed.json`
@@ -216,13 +224,13 @@ exactly one of each, and they always reflect whatever session is currently
 track right now). Outside of a live session the contents typically reflect
 the most recent session.
 
-| URL template | Purpose | Source |
-|---|---|---|
-| `/live-feed.json` | The primary live race feed — every vehicle's running position, last/best lap, manufacturer, sponsor, status, pit count, laps led, stage info, plus a session block (track, lap number, laps to go, flag state, run type, cautions, lead changes). See payload outline below. | `NascarApi/led_sports_ticker/nascar_api.py:94`; `NascarApi/led_sports_ticker/recorder.py:58`; `NascarApi/led_sports_ticker/replay.py:192` |
-| `/live-flag-data.json` | Flag history for the current session as a list (one entry per flag change). | `NascarApi/led_sports_ticker/nascar_api.py:95`; `recorder.py:59`; `replay.py:194` |
-| `/live-pit-data.json` | Live pit data — flat list of stops. | `NascarApi/led_sports_ticker/nascar_api.py:97`; `recorder.py:60`; `replay.py:196` |
-| `/live-points.json` | Live points standings, list form. | `NascarApi/led_sports_ticker/nascar_api.py:96`; `recorder.py:61`; `replay.py:198` |
-| `/live-stage-points.json` | Live stage-points-only standings. | `NascarApi/led_sports_ticker/nascar_api.py:98`; `recorder.py:62`; `replay.py:200` |
+| URL template | Purpose | Verified 2026-05-14 (no race in progress) | Source |
+|---|---|---|---|
+| `/live-feed.json` | The primary live race feed — every vehicle's running position, last/best lap, manufacturer, sponsor, status, pit count, laps led, stage info, plus a session block (track, lap number, laps to go, flag state, run type, cautions, lead changes). See payload outline below. | **200** — 490 B (idle / between sessions); keys: `lap_number, elapsed_time, flag_state, race_id, run_id, laps_in_race, laps_to_go, vehicles, …` (+14 more). Identical payload to `/cacher/live/live-feed.json`. | `NascarApi/led_sports_ticker/nascar_api.py:94`; `NascarApi/led_sports_ticker/recorder.py:58`; `NascarApi/led_sports_ticker/replay.py:192` |
+| `/live-flag-data.json` | Flag history for the current session as a list (one entry per flag change). | **200** — empty array `[]` while idle. | `NascarApi/led_sports_ticker/nascar_api.py:95`; `recorder.py:59`; `replay.py:194` |
+| `/live-pit-data.json` | Live pit data — flat list of stops. | **200** — empty array `[]` while idle. | `NascarApi/led_sports_ticker/nascar_api.py:97`; `recorder.py:60`; `replay.py:196` |
+| `/live-points.json` | Live points standings, list form. | **200** — 23 651 B, array of 46 entries (Cup-series season-points snapshot). Byte-identical to `/cacher/live/live-points.json`. | `NascarApi/led_sports_ticker/nascar_api.py:96`; `recorder.py:61`; `replay.py:198` |
+| `/live-stage-points.json` | Live stage-points-only standings. | **200** — 8 950 B, array of 2 (one entry per stage), item keys `race_id, run_id, stage_number, results`. | `NascarApi/led_sports_ticker/nascar_api.py:98`; `recorder.py:62`; `replay.py:200` |
 
 Payload shape of `live-feed.json` (per `nascar_api.py:178-237`):
 
@@ -291,7 +299,7 @@ Base: `https://cf.nascar.com/loopstats/prod`
 
 | URL template | Purpose | Source |
 |---|---|---|
-| `/{year}/{series_id}/{race_id}.json` | Per-race Loop Data driver stats — the NASCAR Loop scoring metrics: `start_position`, `mid_position`, `position`, `closing_position`, `closing_laps_diff`, `best_position`, `worst_position`, `avg_position`, `passes_green_flag`, `passing_diff`, `passed_green_flag`, `quality_passes`, `fast_laps`, `top15_laps`, `lead_laps`, `laps`, `rating`. | `pynascar/src/pynascar/core/base_api.py:11, 66`; columns at `pynascar/README.md:109-110` |
+| `/{year}/{series_id}/{race_id}.json` | Per-race Loop Data driver stats — the NASCAR Loop scoring metrics: `start_position`, `mid_position`, `position`, `closing_position`, `closing_laps_diff`, `best_position`, `worst_position`, `avg_position`, `passes_green_flag`, `passing_diff`, `passed_green_flag`, `quality_passes`, `fast_laps`, `top15_laps`, `lead_laps`, `laps`, `rating`. **Verified 2026-05-14: the response is a single-element JSON array, not a bare object** — `[{ race_id, race_name, series_id, sch_laps, act_laps, drivers: [...] }]`. The per-driver stats list lives in `drivers`. | `pynascar/src/pynascar/core/base_api.py:11, 66`; columns at `pynascar/README.md:109-110` |
 
 Note the `prod` segment in the path and the bare `{race_id}.json` filename —
 this branch does **not** follow the `/{year}/{series_id}/{race_id}/<file>.json`
@@ -301,129 +309,168 @@ Example: `https://cf.nascar.com/loopstats/prod/2024/1/5544.json`
 
 ---
 
-## 6. Endpoint verification
+## 6. Endpoint verification (2026-05-14)
 
-Verification from this sandbox was not possible: every `cf.nascar.com` URL
-attempted returns `HTTP 403 Forbidden` from this environment (both via
-`curl` with browser-like headers and via the harness `WebFetch` tool). The
-hostname is not on the egress proxy's allowlist and Cloudflare's edge
-appears to reject the resulting source IPs/headers. The same is true for
-`www.nascar.com` and `api.nascar.com`.
+Probed with `verify-nascar-feeds.sh` from a residential connection, sending
+`User-Agent: Mozilla/5.0 … Chrome/124.0 …` and `Referer: https://www.nascar.com/`.
+Parameters: `year=2026`, `series_id=1` (Cup), `race_id=5593` (auto-discovered:
+first completed Cup race of the 2026 season, per `race_list_basic.json`).
+**No race was in progress at probe time** — live feeds therefore reflect the
+idle / between-sessions state.
 
-Endpoints attempted (all returned `HTTP 403`, body literal `Host not in allowlist` when via `curl`):
+### `/cacher/` branch
 
-| URL | Result |
+| URL | HTTP | Size | Top-level shape |
+|---|---|---|---|
+| `cacher/2026/race_list_basic.json` | 200 | 189 511 | `{series_1, series_2, series_3}` |
+| `cacher/drivers.json` | 200 | 1 390 912 | `{status, message, response}` (driver array in `response`) |
+| `cacher/2026/1/5593/weekend-feed.json` | 200 | 50 025 | `{weekend_race, weekend_runs}` |
+| `cacher/2026/1/5593/lap-times.json` | 200 | 305 115 | `{laps, flags}` |
+| `cacher/2026/1/5593/lap-notes.json` | 200 | 13 924 | `{laps}` |
+| `cacher/2026/1/5593/live-pit-data.json` | **403** | 243 | (Cloudflare error body) — see open question #11 |
+| `cacher/2019/2/4817/lapAvg_nxs_practice_1.json` | 200 | 12 262 | array len=30, item keys `{Number, NASCARDriverID, Driver, FullName, Manufacturer, Sponsor}` — **legacy endpoint still alive** |
+
+### `/cacher/live/` branch — series-namespaced
+
+| URL | HTTP | Size | Top-level shape |
+|---|---|---|---|
+| `cacher/live/series_1/5593/weekend-feed.json` | **403** | 263 | — |
+| `cacher/live/series_1/5593/lap-times.json` | 200 | 305 115 | `{laps, flags}` (byte-identical to `cacher/2026/1/5593/lap-times.json` — confirmed alias) |
+| `cacher/live/series_1/5593/lap-notes.json` | **403** | 243 | — |
+| `cacher/live/series_1/5593/live-pit-data.json` | **403** | 243 | — |
+| `cacher/live/series_1/5593/live-feed.json` | 200 | 18 777 | `{lap_number, elapsed_time, flag_state, race_id, run_id, laps_in_race, laps_to_go, vehicles, …}` (22 keys; full final-frame snapshot) |
+
+### `/cacher/live/` branch — global (no series/race in URL)
+
+| URL | HTTP | Size | Top-level shape |
+|---|---|---|---|
+| `cacher/live/live-feed.json` | 200 | 490 | same 22 keys as above (small payload because idle / empty vehicle list) |
+| `cacher/live/live-points.json` | 200 | 23 651 | array len=46, item keys `{bonus_points, car_number, delta_leader, delta_next, first_name, driver_id, …}` |
+| `cacher/live/live-pit-data.json` | 200 | 2 | empty array `[]` |
+
+### `/live/feeds/` branch
+
+| URL | HTTP | Size | Top-level shape |
+|---|---|---|---|
+| `live/feeds/live-feed.json` | 200 | 490 | same 22 keys; **byte-identical to `cacher/live/live-feed.json`** |
+| `live/feeds/live-flag-data.json` | 200 | 2 | empty array `[]` |
+| `live/feeds/live-pit-data.json` | 200 | 2 | empty array `[]` |
+| `live/feeds/live-points.json` | 200 | 23 651 | array len=46; **byte-identical to `cacher/live/live-points.json`** |
+| `live/feeds/live-stage-points.json` | 200 | 8 950 | array len=2 (one entry per stage), item keys `{race_id, run_id, stage_number, results}` |
+
+### `/loopstats/prod/` branch
+
+| URL | HTTP | Size | Top-level shape |
+|---|---|---|---|
+| `loopstats/prod/2026/1/5593.json` | 200 | 6 332 | array len=1, item keys `{race_id, race_name, series_id, sch_laps, act_laps, drivers}` — **note: returns an array, not a single object** |
+
+### Idle-state behavior summary
+
+| Endpoint family | Behavior between races |
 |---|---|
-| `https://cf.nascar.com/cacher/2024/race_list_basic.json` | 403 |
-| `https://cf.nascar.com/cacher/live/live-feed.json` | 403 |
-| `https://cf.nascar.com/live/feeds/live-feed.json` | 403 |
-| `https://cf.nascar.com/loopstats/prod/2024/1/5544.json` | 403 |
+| `/cacher/drivers.json` | Always full roster. |
+| `/cacher/{year}/race_list_basic.json` | Always present; `winner_driver_id` is null/missing for not-yet-run races. |
+| `/cacher/{year}/{series}/{race}/*` | For past races: full results (verified above). For future races: expect 404. `live-pit-data.json` may 403 (see open question #11). |
+| `/cacher/live/series_X/{race}/*` (post-race) | `lap-times.json` and `live-feed.json` survive; `weekend-feed.json`, `lap-notes.json`, `live-pit-data.json` all 403 once the live session is over. The `/cacher/{year}/…` mirror is the durable archive. |
+| `/cacher/live/*` and `/live/feeds/*` (global) | Always 200. Empty arrays (`[]`) for flag/pit feeds when idle; minimal payload for `live-feed.json` (lap_number=0, vehicles=[]); standings carry the latest season totals. |
+| `/loopstats/prod/{year}/{series}/{race}.json` | Populated after race scoring; expect 403/404 for not-yet-scored races. |
 
-That said, the URLs are demonstrably live: `pynascar`, `nascar-tracker`,
-`NascarApi`, and `jemorriso` all run successfully against them in production
-(jemorriso ships a working hard-coded URL — `2021/1/5029/lap-times.json` —
-as a default). To verify outside this sandbox, run from a workstation:
-
-```bash
-# Browser-like headers tend to be sufficient. The Referer header
-# matters: cf.nascar.com inspects it.
-UA="Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0 Safari/537.36"
-
-for url in \
-  https://cf.nascar.com/cacher/drivers.json \
-  https://cf.nascar.com/cacher/2024/race_list_basic.json \
-  https://cf.nascar.com/cacher/2024/1/5544/weekend-feed.json \
-  https://cf.nascar.com/cacher/2024/1/5544/lap-times.json \
-  https://cf.nascar.com/cacher/2024/1/5544/live-pit-data.json \
-  https://cf.nascar.com/cacher/2024/1/5544/lap-notes.json \
-  https://cf.nascar.com/loopstats/prod/2024/1/5544.json \
-  https://cf.nascar.com/cacher/live/live-feed.json \
-  https://cf.nascar.com/cacher/live/live-points.json \
-  https://cf.nascar.com/live/feeds/live-feed.json \
-  https://cf.nascar.com/live/feeds/live-flag-data.json \
-  https://cf.nascar.com/live/feeds/live-stage-points.json \
-  ; do
-  printf '%-78s  ' "$url"
-  curl -sS -A "$UA" -H "Accept: application/json" -H "Referer: https://www.nascar.com/" \
-       -o /tmp/last.json -w "HTTP=%{http_code} SIZE=%{size_download}\n" "$url"
-  python3 -c 'import json,sys; d=json.load(open("/tmp/last.json")); print("  top-level keys:", list(d.keys())[:10] if isinstance(d, dict) else f"array len {len(d)}")' 2>/dev/null
-done
-```
-
-Expected behavior, inferred from the source code:
-
-| Endpoint | Expected when no race is running |
-|---|---|
-| `/cacher/drivers.json` | Always full roster, 24-hour TTL per `nascar-tracker`. |
-| `/cacher/{year}/race_list_basic.json` | Always present; `winner_driver_id == null` (or missing) for not-yet-run races, populated afterward. |
-| `/cacher/{year}/{series_id}/{race_id}/weekend-feed.json` | For past races: full results. For not-yet-run races: 404 (the race weekend pages aren't published until on-site). |
-| `/cacher/live/*` (all variants) | When idle, jemorriso and pynascar both report success but with empty result arrays — e.g. `vehicles: []`. Some files may 404 between races (the `try/except` blocks in `nascar-tracker/backend/lib/nascarApi.js:74-82` are written defensively around this). |
-| `/live/feeds/live-feed.json` and siblings | Always exist, but the payload reflects the *most recent* session (last race / qualifying / practice). `live-flag-data.json` may be `null` or `[]` between sessions. |
-| `/loopstats/prod/{year}/{series_id}/{race_id}.json` | Populated after the race; may 404 for races that have not yet been scored by NASCAR Loop. |
+To re-verify, run `./verify-nascar-feeds.sh` (autodetect) or pass explicit
+parameters, e.g. `./verify-nascar-feeds.sh 2024 1 5544`. The script uses
+only `curl` and Python 3 (no third-party deps) and handles Windows'
+`python3` → `python` → `py -3` interpreter resolution automatically.
 
 ---
 
 ## 7. Open questions / quirks
 
-1. **Two distinct "live" branches** (`/cacher/live/...` and `/live/feeds/...`).
-   They appear to serve the same content while a race is on air, but no repo
-   uses both, and no repo documents which is canonical. The `/cacher/live/...`
-   form is series/race-scoped (`series_1/5544/...`) while `/live/feeds/...` is
-   the single global live state. Worth diffing payloads side-by-side during an
-   actual race.
+Items resolved by the 2026-05-14 verification are marked **[resolved]**.
 
-2. **`nascar-tracker` fetches `cf.nascar.com/cacher/live/live-feed.json`** —
-   i.e. a `live-feed.json` directly under `/cacher/live/` with no
-   `series_x/race_id/` segment (`nascar-tracker/backend/lib/nascarApi.js:74`).
-   This is **not** documented in any other repo and is wrapped in a
-   try/empty-catch ("Supplement with live feed data"). Either the file
-   exists as an alias of `/live/feeds/live-feed.json`, or the call routinely
-   404s and the catch swallows it.
+1. **[resolved] Two distinct "live" branches** — `/cacher/live/live-feed.json`
+   and `/live/feeds/live-feed.json` are **byte-for-byte aliases** (both 490 B
+   in this probe; same 22 top-level keys). Likewise `live-points.json` is
+   identical at 23 651 B across the two roots. They are the same files served
+   under two paths.
 
-3. **`live-pit-data.json` at two roots.** `nascar-tracker/backend/routes/live.js:28`
-   fetches `cf.nascar.com/cacher/live/live-pit-data.json` (global), while
-   `pynascar/src/pynascar/core/base_api.py:51` fetches
-   `cf.nascar.com/cacher/live/series_{series_id}/{race_id}/live-pit-data.json`
-   (per-race), and `NascarApi/led_sports_ticker/recorder.py:60` fetches
-   `cf.nascar.com/live/feeds/live-pit-data.json` (alternate global path).
-   Three URLs for what is almost certainly the same dataset.
+2. **[resolved] `nascar-tracker`'s use of `cacher/live/live-feed.json`** is a
+   real, supported endpoint — not a try/catch curiosity. It returns the same
+   payload as `/live/feeds/live-feed.json`.
+
+3. **[resolved] `live-pit-data.json` at three roots** — global paths
+   (`/cacher/live/live-pit-data.json`, `/live/feeds/live-pit-data.json`) both
+   work and return identical empty arrays when idle. The per-race
+   series-namespaced path (`/cacher/live/series_{n}/{race}/live-pit-data.json`)
+   returns **403 after the race ends**; it apparently exists only during the
+   live session window.
 
 4. **Schedule endpoint per-series filtering happens client-side.**
-   `race_list_basic.json` is a single document keyed by `series_1/2/3`. There
-   is no `/{year}/{series_id}/race_list_basic.json` variant referenced in any
-   repo.
+   `race_list_basic.json` is a single document keyed by `series_1/2/3`. No
+   per-series schedule URL is referenced in any repo, and no narrower variant
+   was probed.
 
-5. **Legacy `lapAvg_nxs_practice_{n}.json`** (§2.6) is the only series-slug-
-   bearing filename observed (`nxs` = Xfinity). pynascar found exactly one
-   working URL (2019/2/4817) and labels the endpoint "may not exist". Whether
-   it still resolves for older races, and whether `lapAvg_cup_practice_n` /
-   `lapAvg_trucks_practice_n` analogues exist, is untested.
+5. **[resolved] Legacy `lapAvg_nxs_practice_{n}.json`** — the 2019 Xfinity
+   reference is **still live in 2026** (HTTP 200, 12 262 bytes, array of 30
+   driver entries). Whether `lapAvg_cup_practice_n` and `lapAvg_trucks_practice_n`
+   filename analogues exist, and whether current-year practice sessions are
+   published under this filename pattern, is still untested.
 
-6. **`drivers.json` response wrapping.** `nascar-tracker/backend/routes/drivers.js:45`
-   reads `raw.response || raw`, which means the response shape has changed at
-   least once between a bare array and a `{response: [...]}` envelope. Both
-   forms are defensively handled.
+6. **[resolved] `drivers.json` response wrapping.** Confirmed envelope as of
+   2026-05-14: `{ status, message, response: [...] }`. `nascar-tracker`'s
+   `raw.response || raw` fallback handles both this current shape and an
+   older bare-array form.
 
-7. **Track ID resolution.** `live-feed.json` returns a numeric `track_id`,
-   but no repo references a `/cacher/.../tracks.json` or similar endpoint —
-   track names are looked up locally (e.g. `nascar-tracker/backend/lib/trackCoordinates.js`,
+7. **Track ID resolution.** `live-feed.json` returns a numeric `track_id`, but
+   no repo references a `/cacher/.../tracks.json` or similar endpoint — track
+   names are looked up locally (`nascar-tracker/backend/lib/trackCoordinates.js`,
    `pynascar/src/pynascar/definitions.py:tracks_map`). If a tracks feed
-   exists on cf.nascar.com it has not been reverse-engineered in any of
-   these repos.
+   exists on cf.nascar.com it has not been reverse-engineered in any of these
+   repos.
 
-8. **No standings / season-points endpoint independent of `/cacher/live/live-points.json`.**
-   `nascar-tracker` derives season standings purely from the live points
-   file (`backend/routes/standings.js`). Whether a historical
-   season-points-per-race file exists is unknown.
+8. **No standings / season-points endpoint independent of `live-points.json`.**
+   `nascar-tracker` derives season standings purely from the live points file
+   (`backend/routes/standings.js`). The 23 651-byte payload observed contains
+   46 driver entries with `bonus_points`, `delta_leader`, `delta_next`, etc.
+   — sufficient for full standings. Whether a per-race historical points file
+   exists is unknown.
 
 9. **No `api.nascar.com` or `www.nascar.com/json/` endpoint referenced** in
-   any of the four repos despite the user's prompt mentioning them as
-   possibilities. Only `cf.nascar.com` is in use.
+   any of the four repos despite the user's prompt mentioning them. Only
+   `cf.nascar.com` is in use.
 
-10. **Egress restrictions.** Many cloud egress IPs are 403'd by Cloudflare
-    regardless of headers (this sandbox is one). Verification typically
-    works from residential / consumer ISP IPs with browser-like
-    `User-Agent` and `Referer: https://www.nascar.com/`.
+10. **Cloudflare egress sensitivity.** Many datacenter IPs receive 403 from
+    Cloudflare regardless of headers. Verification typically works from a
+    residential / consumer ISP IP with a browser-like `User-Agent` and
+    `Referer: https://www.nascar.com/` (this combination succeeded for the
+    2026-05-14 probe). Adding `Accept-Language` may help marginal cases.
+
+11. **[new] `/cacher/{year}/{series}/{race}/live-pit-data.json` returned 403**
+    for race 5593 (a completed Cup race, with weekend-feed/lap-times/lap-notes
+    all returning 200). Either (a) NASCAR doesn't publish pit data archives
+    for every race, (b) it's published under a different filename
+    post-race (the `live-` prefix is suspicious — there may be a separate
+    archival `pit-data.json`), or (c) it lags the other archives. pynascar
+    nevertheless treats this URL as the historical pit source
+    (`base_api.py:53`). Worth retrying on multiple races and checking whether
+    `/cacher/{year}/{series}/{race}/pit-data.json` (no `live-` prefix) exists.
+
+12. **[new] `loopstats/prod/{year}/{series}/{race}.json` returns a
+    single-element JSON array, not a bare object.** The race metadata
+    (`race_id, race_name, series_id, sch_laps, act_laps`) and the per-driver
+    stats list (`drivers`) all sit inside the array's only element.
+    pynascar's `process_data.process_driver_data` evidently strips that outer
+    array before iterating; any new consumer needs to do the same.
+
+13. **[new] `lap-times.json` has a top-level `flags` key alongside `laps`.**
+    None of the four repos consume `flags` (they get flag data either from
+    `lap-notes.json` or from `live-flag-data.json`). It's a free,
+    pre-correlated flag-state-per-lap stream worth investigating.
+
+14. **[new] `live-feed.json` has a top-level `run_id`** in addition to
+    `race_id`. The same `run_id` appears inside `live-stage-points.json`
+    items. `run_id` looks like an identifier for the specific session
+    (practice 1 / practice 2 / qualifying / race) within the race weekend —
+    distinct from `race_id`, which is the weekend itself. Not consumed by
+    any of the four repos.
 
 ---
 
