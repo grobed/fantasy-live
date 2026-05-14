@@ -149,7 +149,7 @@ Examples:
 
 | URL template | Purpose | Source |
 |---|---|---|
-| `/{year}/{series_id}/{race_id}/live-pit-data.json` | Per-stop pit timing — pit-in/out flag state, box stop/leave race time, tire changes per corner, pit-stop type, positions gained/lost, in/out travel duration. Note the `live-` prefix even when fetched from the historical `/cacher/` path. **2026-05-14 verification returned HTTP 403** for `cacher/2026/1/5593/live-pit-data.json` — see §7 open question #11; this endpoint may not be published immediately after every race. | `pynascar/src/pynascar/core/base_api.py:53`; columns documented at `pynascar/README.md:102-103` |
+| `/{year}/{series_id}/{race_id}/live-pit-data.json` | Per-stop pit timing — pit-in/out flag state, box stop/leave race time, tire changes per corner, pit-stop type, positions gained/lost, in/out travel duration. Note the `live-` prefix even when fetched from the historical `/cacher/` path. **2026-05-14 verification returned HTTP 403** for `cacher/2026/1/5593/live-pit-data.json` — see §7 open question #11. **⏸ Live-only — pending verification during an active race.** The `live-` filename prefix, plus the matching 403s on every other `/cacher/live/series_X/{race}/...` URL, suggest this file exists only while a session is on air and is not archived afterward. | `pynascar/src/pynascar/core/base_api.py:53`; columns documented at `pynascar/README.md:102-103` |
 
 Example: `https://cf.nascar.com/cacher/2024/1/5544/live-pit-data.json`
 
@@ -204,10 +204,10 @@ under `/cacher/{year}/{series_id}/{race_id}/...`.
 
 | URL template | Purpose | Verified 2026-05-14 (race 5593) | Source |
 |---|---|---|---|
-| `/series_{series_id}/{race_id}/weekend-feed.json` | Live equivalent of §2.1. Updated mid-race. | **403** (after race ended) | `pynascar/src/pynascar/core/base_api.py:35` |
+| `/series_{series_id}/{race_id}/weekend-feed.json` | Live equivalent of §2.1. Updated mid-race. **⏸ Live-only — pending verification during an active race.** | **403** (after race ended) | `pynascar/src/pynascar/core/base_api.py:35` |
 | `/series_{series_id}/{race_id}/lap-times.json` | Live equivalent of §2.2 lap-times. | **200** — 305 115 B, byte-identical to `cacher/2026/1/5593/lap-times.json`. The series-namespaced live form is preserved in the CDN after the race. | `pynascar/src/pynascar/core/base_api.py:43` |
-| `/series_{series_id}/{race_id}/lap-notes.json` | Live equivalent of §2.2 lap-notes (race-control event log). | **403** (after race ended) | `pynascar/src/pynascar/core/base_api.py:59` |
-| `/series_{series_id}/{race_id}/live-pit-data.json` | Live pit stop data. Survives in the CDN for *some* completed races but not all — the 2023 Xfinity race 5314 (`cacher/live/series_2/5314/live-pit-data.json`) returns 200, but the 2026 Daytona 500 (Cup race 5593) returned 403. | **403** for race 5593 / **200** for race 5314 (user-reported) — see open question #11 | `pynascar/src/pynascar/core/base_api.py:51` |
+| `/series_{series_id}/{race_id}/lap-notes.json` | Live equivalent of §2.2 lap-notes (race-control event log). **⏸ Live-only — pending verification during an active race.** | **403** (after race ended) | `pynascar/src/pynascar/core/base_api.py:59` |
+| `/series_{series_id}/{race_id}/live-pit-data.json` | Live pit stop data. Survives in the CDN for *some* completed races but not all — the 2023 Xfinity race 5314 (`cacher/live/series_2/5314/live-pit-data.json`) returns 200, but the 2026 Daytona 500 (Cup race 5593) returned 403. **⏸ Live-only — pending verification during an active race.** Survival in the cache after a race is race-specific; the canonical behavior can only be confirmed by probing during an in-progress session. | **403** for race 5593 / **200** for race 5314 (user-reported) — see open question #11 | `pynascar/src/pynascar/core/base_api.py:51` |
 | `/series_{series_id}/{race_id}/live-feed.json` | "Advanced driver stat" / per-vehicle live state — current running position, lap, flag, etc. See §4 for the response shape (same payload as `/live/feeds/live-feed.json`). pynascar uses this URL to populate `driver_data.driver_stats_advanced`. | **200** — 18 777 B; keys include `lap_number, elapsed_time, flag_state, race_id, run_id, laps_in_race, laps_to_go, vehicles, …` (+14 more). This is the final-frame snapshot the CDN keeps after the race. | `pynascar/src/pynascar/core/base_api.py:71`; column list in `pynascar/README.md:112-113` |
 | `/live-feed.json` | Global live feed at the `/cacher/live/` root (no `series_x/race_id/`). **Confirmed live 2026-05-14** — returns the same 490-byte payload as `/live/feeds/live-feed.json`, demonstrating the two paths are aliases. | **200** — 490 B, same keys as the series-namespaced live-feed. | `nascar-tracker/backend/lib/nascarApi.js:74` |
 | `/live-points.json` | Live points standings (post-2024 stage points + race-day points). Used as the standings source by `nascar-tracker`. | **200** — 23 651 B, array of 46 items with keys `bonus_points, car_number, delta_leader, delta_next, first_name, driver_id, …`. Byte-identical to `/live/feeds/live-points.json`. | `nascar-tracker/backend/routes/live.js:18`; `nascar-tracker/backend/routes/standings.js:10` |
@@ -413,6 +413,27 @@ To re-verify, run `./verify-nascar-feeds.sh` (autodetect) or pass explicit
 parameters, e.g. `./verify-nascar-feeds.sh 2024 1 5544`. The script uses
 only `curl` and Python 3 (no third-party deps) and handles Windows'
 `python3` → `python` → `py -3` interpreter resolution automatically.
+
+### ⏸ Pending verification during an active race
+
+Four URLs returned `HTTP 403` in the idle-state probe and need to be
+re-checked while a session is actually on the air, since they appear to be
+live-only feeds that the CDN does not preserve after the session ends:
+
+| URL pattern | Status |
+|---|---|
+| `cacher/{year}/{series}/{race}/live-pit-data.json` | 403 idle; survives for at least some past races; only consistently verifiable during the live session. |
+| `cacher/live/series_{series}/{race}/weekend-feed.json` | 403 idle. |
+| `cacher/live/series_{series}/{race}/lap-notes.json` | 403 idle. |
+| `cacher/live/series_{series}/{race}/live-pit-data.json` | 403 idle for race 5593; 200 for the older 2023 Xfinity race 5314 (race-specific CDN survival). |
+
+The common pattern is the `/cacher/live/series_X/{race}/` namespace and the
+`live-` prefixed filename. Two non-`live-` files at the same namespace
+(`lap-times.json`, `live-feed.json`) *do* survive in the cache post-race,
+so this isn't a blanket "live URLs are ephemeral" rule — but the four above
+are clearly the live-only subset. They should be re-probed once a Cup,
+Xfinity, or Truck race is in progress to capture their actual response
+shape and confirm pynascar's `cacher/live/...` URLs are correct.
 
 ---
 
