@@ -135,6 +135,7 @@ echo
 echo "--- /cacher/  (historical & schedule) ---"
 probe "schedule"               "https://cf.nascar.com/cacher/${YEAR}/race_list_basic.json"
 probe "drivers roster"         "https://cf.nascar.com/cacher/drivers.json"
+probe "tracks database"        "https://cf.nascar.com/cacher/tracks.json"
 probe "weekend-feed"           "https://cf.nascar.com/cacher/${YEAR}/${SERIES}/${RACE}/weekend-feed.json"
 probe "lap-times"              "https://cf.nascar.com/cacher/${YEAR}/${SERIES}/${RACE}/lap-times.json"
 probe "lap-notes (events)"     "https://cf.nascar.com/cacher/${YEAR}/${SERIES}/${RACE}/lap-notes.json"
@@ -162,6 +163,8 @@ probe "live-flag-data"         "https://cf.nascar.com/live/feeds/live-flag-data.
 probe "live-pit-data"          "https://cf.nascar.com/live/feeds/live-pit-data.json"
 probe "live-points"            "https://cf.nascar.com/live/feeds/live-points.json"
 probe "live-stage-points"      "https://cf.nascar.com/live/feeds/live-stage-points.json"
+# Note: underscore filename, only series-namespaced URL on this branch
+probe "live_points (per-race)" "https://cf.nascar.com/live/feeds/series_${SERIES}/${RACE}/live_points.json"
 
 # ---- /loopstats/prod/  driver loop stats ----------------------------------
 echo "--- /loopstats/prod/  (NASCAR Loop Data driver stats) ---"
