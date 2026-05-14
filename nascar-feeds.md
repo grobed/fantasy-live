@@ -239,7 +239,7 @@ the most recent session.
 | `/live-pit-data.json` | Live pit data — flat list of stops. | **200** — empty array `[]` while idle. | `NascarApi/led_sports_ticker/nascar_api.py:97`; `recorder.py:60`; `replay.py:196` |
 | `/live-points.json` | Live points standings, list form. | **200** — 23 651 B, array of 46 entries (Cup-series season-points snapshot). Byte-identical to `/cacher/live/live-points.json`. | `NascarApi/led_sports_ticker/nascar_api.py:96`; `recorder.py:61`; `replay.py:198` |
 | `/live-stage-points.json` | Live stage-points-only standings. | **200** — 8 950 B, array of 2 (one entry per stage), item keys `race_id, run_id, stage_number, results`. `results[]` items: `{position, vehicle_number, driver_id, full_name, stage_points}`. | `NascarApi/led_sports_ticker/nascar_api.py:98`; `recorder.py:62`; `replay.py:200`; `NascarApi/NewEndpointsDiscovered.MD:7-23` |
-| `/series_{series_id}/{race_id}/live_points.json` | **Series-namespaced live points feed under `/live/feeds/`** — referenced only in `NascarApi/LivePointsData`. Note the **underscore in the filename** (`live_points.json`, not `live-points.json` with a hyphen) and that this is the only `/live/feeds/...` URL with a series/race in the path. Whether it differs from the global `/live/feeds/live-points.json` is untested. | (not probed yet) | `NascarApi/LivePointsData` |
+| `/series_{series_id}/{race_id}/live_points.json` | **Series-namespaced live points feed under `/live/feeds/`** — referenced only in `NascarApi/LivePointsData`. Note the **underscore in the filename** (`live_points.json`, not `live-points.json` with a hyphen) and that this is the only `/live/feeds/...` URL with a series/race in the path. **Verified 2026-05-14 as a distinct dataset from the global `live-points.json`:** 31 312 bytes / 61 entries vs the global feed's 23 651 bytes / 46 entries. Same item-level keys (`bonus_points, car_number, delta_leader, delta_next, first_name, driver_id, …`) but more rows — most likely the full race-day points roster (every driver who started race 5593) versus the global feed's season top-46. | **200** — 31 312 B, array of **61** items (cf. 46 for the global `live-points.json`). | `NascarApi/LivePointsData` |
 
 Payload shape of `live-feed.json` (per `nascar_api.py:178-237` and the
 field-by-field tables in `NascarApi/LiveFeed.MD` and
@@ -356,6 +356,7 @@ idle / between-sessions state.
 |---|---|---|---|
 | `cacher/2026/race_list_basic.json` | 200 | 189 511 | `{series_1, series_2, series_3}` |
 | `cacher/drivers.json` | 200 | 1 390 912 | `{status, message, response}` (driver array in `response`) |
+| `cacher/tracks.json` | 200 | 55 311 | `{items: [...]}` (49 tracks) |
 | `cacher/2026/1/5593/weekend-feed.json` | 200 | 50 025 | `{weekend_race, weekend_runs}` |
 | `cacher/2026/1/5593/lap-times.json` | 200 | 305 115 | `{laps, flags}` |
 | `cacher/2026/1/5593/lap-notes.json` | 200 | 13 924 | `{laps}` |
@@ -389,6 +390,7 @@ idle / between-sessions state.
 | `live/feeds/live-pit-data.json` | 200 | 2 | empty array `[]` |
 | `live/feeds/live-points.json` | 200 | 23 651 | array len=46; **byte-identical to `cacher/live/live-points.json`** |
 | `live/feeds/live-stage-points.json` | 200 | 8 950 | array len=2 (one entry per stage), item keys `{race_id, run_id, stage_number, results}` |
+| `live/feeds/series_1/5593/live_points.json` | 200 | 31 312 | array len=**61** (cf. 46 for global `live-points.json`); same item-level keys — **not** an alias of the global feed |
 
 ### `/loopstats/prod/` branch
 
@@ -518,13 +520,17 @@ Items resolved by the 2026-05-14 verification are marked **[resolved]**.
     `run_type` (`{event_name, notes, start_time_utc, run_type}`) which
     cross-references this.
 
-15. **[new] Filename naming inconsistency on `/live/feeds/`.** The single
-    series-namespaced URL on this branch
+15. **[partially resolved] Filename naming inconsistency on `/live/feeds/`.**
+    The series-namespaced URL on this branch
     (`live/feeds/series_{series}/{race}/live_points.json`, per
     `NascarApi/LivePointsData`) uses an **underscore** in the filename,
     whereas every other live points URL uses a hyphen
-    (`live-points.json`). It is unclear whether this is a typo in the
-    source repo or an actual quirk of the CDN.
+    (`live-points.json`). The underscored URL **is real** (verified
+    2026-05-14, 200, 31 312 B) and serves a **larger 61-row dataset** than
+    the global 46-row hyphenated `live-points.json` — so it's a distinct
+    endpoint, not a typo. Open: what exactly distinguishes the 15 extra
+    rows? Probably non-top-46 / non-points-eligible drivers who still
+    competed in the race. Worth diffing the two payloads.
 
 16. **[new] `tracks.json` is not consumed by any of the four repos.** Each
     keeps its own local track table (e.g.
