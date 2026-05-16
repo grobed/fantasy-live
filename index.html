@@ -48,7 +48,7 @@
   // Expected columns (header row, any order): Driver, Owner, Season Total.
   // "Season Total" must be each owner's points ENTERING the current race;
   // live race points are added on top at render time.
-  const OWNER_SHEET_CSV_URL = '';
+  const OWNER_SHEET_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=7&single=true&output=csv';
 
   // Used only when OWNER_SHEET_CSV_URL is '' or the sheet fetch fails.
   const FALLBACK_OWNERS = [
@@ -112,7 +112,9 @@
   async function loadOwnerInfo() {
     if (OWNER_SHEET_CSV_URL) {
       try {
-        const res = await fetch(OWNER_SHEET_CSV_URL);
+        // Cache-buster: the published CSV is cached by the browser, so a
+        // page reload could otherwise show stale owner data after a sheet edit.
+        const res = await fetch(OWNER_SHEET_CSV_URL + '&_=' + Date.now());
         if (!res.ok) throw new Error('HTTP ' + res.status);
         const rows = parseCSV(await res.text());
         const header = (rows.shift() || []).map(h => h.trim().toLowerCase());
