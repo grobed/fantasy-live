@@ -58,18 +58,9 @@
   const LIVE_FEED_URL = 'https://cf.nascar.com/live/feeds/live-feed.json';
   const REFRESH_MS = 60000;
   const FLAG_CHECKERED = 5;   // flag_state value meaning the race is over
-
-  // Used only when the picks/standings sheets can't be loaded.
-  const FALLBACK_OWNERS = [
-    { owner: "Mark Almaguer",    driver: "Chase Elliott",  seasonTotal: 143 },
-    { owner: "Bobby Grobe (#1)", driver: "Kyle Larson",    seasonTotal: 134 },
-    { owner: "David Lee Grobe",  driver: "Ryan Blaney",    seasonTotal: 142 },
-    { owner: "Tommy Rye",        driver: "William Byron",  seasonTotal: 167 },
-    { owner: "Jeff Lindhorst",   driver: "Joey Logano",    seasonTotal: 126 },
-    { owner: "Kris Rye",         driver: "Ty Gibbs",       seasonTotal: 117 },
-    { owner: "Travis Penny",     driver: "Denny Hamlin",   seasonTotal: 172 },
-    { owner: "Bobby Grobe (#2)", driver: "Chase Briscoe",  seasonTotal: 127 },
-  ];
+  // The season schedule barely changes; cache it instead of re-downloading
+  // ~190 KB every refresh.
+  const SCHEDULE_TTL_MS = 30 * 60 * 1000;
 
   // ---- State ---------------------------------------------------------
 
@@ -80,6 +71,13 @@
   let ownerList = [];
   // true once every standings owner has a pick.
   let draftComplete = false;
+  // true once the picks/standings sheets have loaded successfully at least
+  // once; until then the page is in its initial "Loading…" state.
+  let ownerDataLoaded = false;
+  // Cached season schedule: [{ race, t }] sorted oldest first, plus the
+  // epoch ms it was fetched.
+  let scheduleCache = null;
+  let scheduleCacheAt = 0;
 
   // ---- Utilities -----------------------------------------------------
 
@@ -116,11 +114,18 @@
 
   // ---- Owner / pick loading ------------------------------------------
 
+  // Re-read both sheet tabs. On success updates ownerInfo / ownerList /
+  // draftComplete and returns true. On failure returns false and leaves any
+  // previously loaded data untouched, so a transient blip never replaces a
+  // good roster with wrong numbers.
   async function loadOwnerInfo() {
     try {
-      const pickRows = await fetchCSV(PICKS_CSV_URL);
-      const standingRows = await fetchCSV(STANDINGS_CSV_URL)
-        .catch(e => { console.error('Standings load failed:', e); return []; });
+      // Both tabs come from one sheet but need one request each (the CSV
+      // export is per-tab); fetch them at the same time.
+      const [pickRows, standingRows] = await Promise.all([
+        fetchCSV(PICKS_CSV_URL),
+        fetchCSV(STANDINGS_CSV_URL),
+      ]);
 
       // Standings tab: column C = owner, column D = season points.
       const totals = {};
@@ -139,8 +144,8 @@
       // Row order is draft-pick order.
       const pickByOwner = {};
       const pickIndex = {};
+      const info = {};
       let seq = 0;
-      ownerInfo = {};
       pickRows.forEach(r => {
         const owner = (r[0] || '').trim();
         const driver = cleanName(r[1]);
@@ -148,7 +153,7 @@
         const key = owner.toLowerCase();
         pickByOwner[key] = driver;
         pickIndex[key] = seq++;
-        ownerInfo[driver] = { owner: owner, seasonTotal: totals[key] || 0 };
+        info[driver] = { owner: owner, seasonTotal: totals[key] || 0 };
       });
 
       // One entry per standings owner: picked owners first in pick order,
@@ -161,18 +166,15 @@
       const picked = list.filter(o => o.driver).sort((a, b) =>
         pickIndex[a.owner.toLowerCase()] - pickIndex[b.owner.toLowerCase()]);
       const pending = list.filter(o => !o.driver);
+
+      ownerInfo = info;
       ownerList = picked.concat(pending);
       draftComplete = pending.length === 0;
-      return;
+      ownerDataLoaded = true;
+      return true;
     } catch (e) {
-      console.error('Owner sheet load failed, using fallback:', e);
-      ownerInfo = {};
-      ownerList = FALLBACK_OWNERS.map(o => {
-        const driver = cleanName(o.driver);
-        ownerInfo[driver] = { owner: o.owner, seasonTotal: o.seasonTotal };
-        return { owner: o.owner, seasonTotal: o.seasonTotal, driver: driver };
-      });
-      draftComplete = true;
+      console.error('Owner sheet load failed:', e);
+      return false;
     }
   }
 
@@ -187,21 +189,27 @@
   }
 
   // League races from the season schedule, each paired with its start time
-  // in epoch ms, sorted oldest first.
+  // in epoch ms, sorted oldest first. Cached for SCHEDULE_TTL_MS; on a fetch
+  // error the last good copy is reused.
   async function fetchSchedule() {
+    if (scheduleCache && Date.now() - scheduleCacheAt < SCHEDULE_TTL_MS) {
+      return scheduleCache;
+    }
     try {
-      const res = await fetch(SCHEDULE_URL + '?_=' + Date.now());
-      if (!res.ok) { console.error('schedule HTTP ' + res.status); return []; }
+      const res = await fetch(SCHEDULE_URL);
+      if (!res.ok) throw new Error('HTTP ' + res.status);
       const data = await res.json();
       const races = data['series_' + LEAGUE_SERIES_ID] || [];
-      return races
+      scheduleCache = races
         .filter(r => r.race_date)
         .map(r => ({ race: r, t: new Date(r.race_date).getTime() }))
         .filter(x => !Number.isNaN(x.t))
         .sort((a, b) => a.t - b.t);
+      scheduleCacheAt = Date.now();
+      return scheduleCache;
     } catch (e) {
       console.error('schedule fetch failed:', e);
-      return [];
+      return scheduleCache || [];
     }
   }
 
@@ -231,14 +239,16 @@
   //   awaiting  - Sat/Sun before this weekend's race has run: owner roster
   //               and season totals only, no prior-race results
   async function resolveRace() {
-    const schedule = await fetchSchedule();
+    const [schedule, liveId] = await Promise.all([
+      fetchSchedule(),
+      liveRaceProbe(),
+    ]);
     const now = Date.now();
     const past = schedule.filter(x => x.t <= now);
     const future = schedule.filter(x => x.t > now);
     const last = past.length ? past[past.length - 1] : null;
     const next = future.length ? future[0].race : null;
 
-    const liveId = await liveRaceProbe();
     if (liveId) return { mode: 'live', raceId: liveId, race: null };
 
     const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
@@ -374,38 +384,43 @@
     }
   }
 
+  // Points earned this race, keyed by cleaned driver name. Empty if the feed
+  // is unavailable (race not started / failed fetch).
+  async function fetchRacePoints(raceId) {
+    const earned = {};
+    if (!raceId) return earned;
+    try {
+      const url = `https://cf.nascar.com/live/feeds/series_${LEAGUE_SERIES_ID}`
+        + `/${raceId}/live_points.json?_=` + Date.now();
+      const res = await fetch(url);
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          data.forEach(vehicle => {
+            const name = cleanName(
+              `${vehicle.first_name || ''} ${vehicle.last_name || ''}`);
+            if (name) earned[name] = vehicle.points_earned_this_race || 0;
+          });
+        }
+      } else {
+        console.error('Points feed returned HTTP ' + res.status);
+      }
+    } catch (e) {
+      console.error('Points feed fetch failed:', e);
+    }
+    return earned;
+  }
+
   async function renderRaceView(raceId) {
     document.getElementById('raceView').style.display = '';
     document.getElementById('ownerTitle').textContent = 'Owner Points';
 
-    const feed = await fetchRaceFeed(raceId);
+    const [feed, earnedByDriver] = await Promise.all([
+      fetchRaceFeed(raceId),
+      fetchRacePoints(raceId),
+    ]);
     renderVehicles(feed);
     setRaceStatus(feed);
-
-    // Points earned this race, keyed by cleaned driver name. Stays empty if
-    // the feed is unavailable (race not started / failed fetch).
-    const earnedByDriver = {};
-    if (raceId) {
-      try {
-        const url = `https://cf.nascar.com/live/feeds/series_${LEAGUE_SERIES_ID}`
-          + `/${raceId}/live_points.json?_=` + Date.now();
-        const res = await fetch(url);
-        if (res.ok) {
-          const data = await res.json();
-          if (Array.isArray(data)) {
-            data.forEach(vehicle => {
-              const name = cleanName(
-                `${vehicle.first_name || ''} ${vehicle.last_name || ''}`);
-              if (name) earnedByDriver[name] = vehicle.points_earned_this_race || 0;
-            });
-          }
-        } else {
-          console.error('Points feed returned HTTP ' + res.status);
-        }
-      } catch (e) {
-        console.error('Points feed fetch failed:', e);
-      }
-    }
 
     document.getElementById('ownerHead').innerHTML =
       '<tr><th>Owner</th><th>Driver</th><th>Points Earned This Race</th>'
@@ -440,18 +455,27 @@
 
   async function refresh() {
     try {
-      // Re-read the sheets every cycle so the draft board updates live and
-      // a sheet reset is noticed promptly.
-      await loadOwnerInfo();
-      if (!draftComplete) {
-        renderDraftBoard();
+      // Re-read the sheets every cycle so the draft board updates live and a
+      // sheet reset is noticed promptly. Owner data and race state are
+      // independent, so fetch them at the same time.
+      const [ok, raceInfo] = await Promise.all([loadOwnerInfo(), resolveRace()]);
+
+      if (!ok) {
+        // Keep the last good render if we have one; otherwise tell the user
+        // why the page is blank rather than inventing numbers.
+        if (!ownerDataLoaded) {
+          document.getElementById('status').textContent =
+            'Could not load owner data — retrying…';
+        }
         return;
       }
-      const { mode, raceId, race } = await resolveRace();
-      if (mode === 'awaiting') {
-        renderAwaiting(race);
+
+      if (!draftComplete) {
+        renderDraftBoard();
+      } else if (raceInfo.mode === 'awaiting') {
+        renderAwaiting(raceInfo.race);
       } else {
-        await renderRaceView(raceId);
+        await renderRaceView(raceInfo.raceId);
       }
     } catch (error) {
       console.error('Refresh failed:', error);
