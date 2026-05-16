@@ -4,6 +4,9 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>NASCAR Live Feed with Points and Season Totals</title>
+  <style>
+    tr.undrafted { color: #aaa; }
+  </style>
 </head>
 <body>
 
@@ -31,7 +34,6 @@
       <th>Driver</th>
       <th>Points Earned This Race</th>
       <th>Season Total Points</th>
-      <th>Points +/- from 4th Place</th>
     </tr>
   </thead>
   <tbody id="ownerPointsTable"></tbody>
@@ -245,10 +247,12 @@
     liveFeedData.innerHTML = '';
     data.vehicles.forEach(vehicle => {
       const driverName = cleanName(vehicle.driver && vehicle.driver.full_name);
-      const info = ownerInfo[driverName] || { owner: 'Unknown' };
+      const info = ownerInfo[driverName];
       const row = document.createElement('tr');
+      if (!info) row.className = 'undrafted';
       row.innerHTML =
-        `<td>${vehicle.vehicle_number}</td><td>${driverName}</td><td>${info.owner}</td>`;
+        `<td>${vehicle.vehicle_number}</td><td>${driverName}</td>` +
+        `<td>${info ? info.owner : 'undrafted'}</td>`;
       liveFeedData.appendChild(row);
     });
   }
@@ -303,18 +307,15 @@
     });
 
     standings.sort((a, b) => b.total - a.total);
-    const fourthPlaceTotal = standings.length >= 4 ? standings[3].total : 0;
 
     ownerPointsTable.innerHTML = '';
     standings.forEach(s => {
-      const diff = s.total - fourthPlaceTotal;
       const row = document.createElement('tr');
       row.innerHTML = `
         <td>${s.owner}</td>
         <td>${s.driver}</td>
         <td>${s.earned}</td>
         <td>${s.total}</td>
-        <td>${diff >= 0 ? '+' : ''}${diff}</td>
       `;
       ownerPointsTable.appendChild(row);
     });
