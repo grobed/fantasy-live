@@ -3,89 +3,89 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>NASCAR Live Feed with Points and Season Totals</title>
+  <title>NASCAR Fantasy — Draft Board &amp; Live Leaderboard</title>
   <style>
-    tr.undrafted { color: #aaa; }
+    tr.muted { color: #aaa; }
   </style>
 </head>
 <body>
 
-<h2>Lap Number: <span id="lapNumber"></span></h2>
+<h2 id="status">Loading…</h2>
 
-<h2>Vehicle Data</h2>
+<!-- Race view: shown once every owner has drafted -->
+<div id="raceView" style="display:none">
+  <h3>Live Leaderboard</h3>
+  <table border="1">
+    <thead>
+      <tr>
+        <th>Vehicle Number</th>
+        <th>Driver</th>
+        <th>Owner</th>
+      </tr>
+    </thead>
+    <tbody id="liveFeedData"></tbody>
+  </table>
+  <p>Last Updated: <span id="lastUpdate"></span></p>
+</div>
+
+<!-- Owner table: draft board during the draft, points table during the race -->
+<h3 id="ownerTitle">Owners</h3>
 <table border="1">
-  <thead>
-    <tr>
-      <th>Vehicle Number</th>
-      <th>Driver</th>
-      <th>Owner</th>
-    </tr>
-  </thead>
-  <tbody id="liveFeedData"></tbody>
+  <thead id="ownerHead"></thead>
+  <tbody id="ownerBody"></tbody>
 </table>
-
-<p>Last Updated: <span id="lastUpdate"></span></p>
-
-<h2>Owner Points Table</h2>
-<table border="1">
-  <thead>
-    <tr>
-      <th>Owner</th>
-      <th>Driver</th>
-      <th>Points Earned This Race</th>
-      <th>Season Total Points</th>
-    </tr>
-  </thead>
-  <tbody id="ownerPointsTable"></tbody>
-</table>
-
-<p>Last Updated: <span id="lastUpdatePoints"></span></p>
+<p>Last Updated: <span id="lastUpdateOwners"></span></p>
 
 <script>
   // ---- Configuration -------------------------------------------------
 
-  // Two published-to-web CSV tabs from the same Google Sheet, joined on
-  // owner name.
-  //   Picks tab    - column A = owner, column B = driver (this week's pick).
-  //                  The first row holds the literal labels "owner"/"driver"
-  //                  and is skipped.
+  // Two published-to-web CSV tabs from the same Google Sheet.
+  //   Picks tab    - column A = owner, column B = driver. The first row
+  //                  holds the literal "owner"/"driver" labels. Row order
+  //                  is treated as draft-pick order.
   //   Standings tab- column C = owner, column D = season points entering
-  //                  this race. Rows whose points cell isn't numeric
-  //                  (header, totals, blanks) are skipped.
-  // Live race points are added on top of the standings total at render time,
-  // so the standings tab should hold each owner's pre-race total.
+  //                  this race. This tab is the canonical full owner list:
+  //                  the draft is "complete" when every owner here has a
+  //                  pick. Rows whose points cell isn't numeric are skipped.
   const PICKS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=7&single=true&output=csv';
   const STANDINGS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=148&single=true&output=csv';
 
-  // Used only when the picks sheet can't be loaded.
-  const FALLBACK_OWNERS = [
-    { driver: "Chase Elliott",  owner: "Mark Almaguer",    seasonTotal: 143 },
-    { driver: "Kyle Larson",    owner: "Bobby Grobe (#1)", seasonTotal: 134 },
-    { driver: "Ryan Blaney",    owner: "David Lee Grobe",  seasonTotal: 142 },
-    { driver: "William Byron",  owner: "Tommy Rye",        seasonTotal: 167 },
-    { driver: "Joey Logano",    owner: "Jeff Lindhorst",   seasonTotal: 126 },
-    { driver: "Ty Gibbs",       owner: "Kris Rye",         seasonTotal: 117 },
-    { driver: "Denny Hamlin",   owner: "Travis Penny",     seasonTotal: 172 },
-    { driver: "Chase Briscoe",  owner: "Bobby Grobe (#2)", seasonTotal: 127 },
-  ];
-
-  const LIVE_FEED_URL = 'https://cf.nascar.com/live/feeds/live-feed.json';
-  const REFRESH_MS = 60000;
-
   // The series this league picks from: 1 = Cup, 2 = Xfinity, 3 = Trucks.
-  // The page pins to this series. It does NOT follow whatever race happens
-  // to be live on NASCAR.com when that race belongs to a different series.
   const LEAGUE_SERIES_ID = 1;
   const SEASON_YEAR = new Date().getFullYear();
   const SCHEDULE_URL =
     `https://cf.nascar.com/cacher/${SEASON_YEAR}/race_list_basic.json`;
+  const LIVE_FEED_URL = 'https://cf.nascar.com/live/feeds/live-feed.json';
+  const REFRESH_MS = 60000;
+  const FLAG_CHECKERED = 5;   // flag_state value meaning the race is over
 
-  // ---- Owner info ----------------------------------------------------
+  // Used only when the picks/standings sheets can't be loaded.
+  const FALLBACK_OWNERS = [
+    { owner: "Mark Almaguer",    driver: "Chase Elliott",  seasonTotal: 143 },
+    { owner: "Bobby Grobe (#1)", driver: "Kyle Larson",    seasonTotal: 134 },
+    { owner: "David Lee Grobe",  driver: "Ryan Blaney",    seasonTotal: 142 },
+    { owner: "Tommy Rye",        driver: "William Byron",  seasonTotal: 167 },
+    { owner: "Jeff Lindhorst",   driver: "Joey Logano",    seasonTotal: 126 },
+    { owner: "Kris Rye",         driver: "Ty Gibbs",       seasonTotal: 117 },
+    { owner: "Travis Penny",     driver: "Denny Hamlin",   seasonTotal: 172 },
+    { owner: "Bobby Grobe (#2)", driver: "Chase Briscoe",  seasonTotal: 127 },
+  ];
 
-  // Cleaned driver name -> { owner, seasonTotal }. seasonTotal here stays
-  // the pre-race base; the live race total is computed fresh each poll and
-  // never written back into this object.
+  // ---- State ---------------------------------------------------------
+
+  // cleaned driver name -> { owner, seasonTotal }; drives the vehicle table.
   let ownerInfo = {};
+  // [{ owner, seasonTotal, driver|null }] one per standings owner — picked
+  // owners first (in draft-pick order), then owners still on the clock.
+  let ownerList = [];
+  // true once every standings owner has a pick.
+  let draftComplete = false;
+  // Latched race id for the current picks. Set when race mode begins so it
+  // does NOT advance to next week's race after this race finishes; cleared
+  // when the picks sheet is reset (back to draft mode).
+  let lockedRaceId = null;
+
+  // ---- Utilities -----------------------------------------------------
 
   function cleanName(s) {
     // Strip rookie/playoff markers (* #) and collapse whitespace.
@@ -110,27 +110,15 @@
     return rows;
   }
 
-  function buildOwnerInfo(list) {
-    const map = {};
-    list.forEach(o => {
-      const name = cleanName(o.driver);
-      if (name) {
-        map[name] = {
-          owner: (o.owner || 'Unknown').trim(),
-          seasonTotal: Number(o.seasonTotal) || 0,
-        };
-      }
-    });
-    return map;
-  }
-
   async function fetchCSV(url) {
-    // Cache-buster: the published CSV is cached by the browser, so a reload
-    // after a sheet edit could otherwise be served a stale copy.
+    // Cache-buster: the published CSV is cached by the browser, so a poll
+    // could otherwise be served a stale copy after a sheet edit.
     const res = await fetch(url + '&_=' + Date.now());
     if (!res.ok) throw new Error('HTTP ' + res.status);
     return parseCSV(await res.text());
   }
+
+  // ---- Owner / pick loading ------------------------------------------
 
   async function loadOwnerInfo() {
     try {
@@ -138,136 +126,192 @@
       const standingRows = await fetchCSV(STANDINGS_CSV_URL)
         .catch(e => { console.error('Standings load failed:', e); return []; });
 
-      // Standings: column C = owner, column D = season points. Skip rows
-      // whose points cell isn't numeric (header row, totals, blanks).
+      // Standings tab: column C = owner, column D = season points.
       const totals = {};
+      const standingOwners = [];
       standingRows.forEach(r => {
         const owner = (r[2] || '').trim();
         const pts = Number(r[3]);
-        if (owner && !Number.isNaN(pts)) totals[owner.toLowerCase()] = pts;
+        if (owner && !Number.isNaN(pts)) {
+          totals[owner.toLowerCase()] = pts;
+          standingOwners.push(owner);
+        }
       });
+      if (standingOwners.length === 0) throw new Error('no standings rows parsed');
 
-      // Picks: column A = owner, column B = driver. The first row holds the
-      // literal labels "owner"/"driver" and is skipped.
-      const map = {};
+      // Picks tab: column A = owner, column B = driver. Skip the label row.
+      // Row order is draft-pick order.
+      const pickByOwner = {};
+      const pickIndex = {};
+      let seq = 0;
+      ownerInfo = {};
       pickRows.forEach(r => {
         const owner = (r[0] || '').trim();
         const driver = cleanName(r[1]);
         if (!owner || !driver || owner.toLowerCase() === 'owner') return;
-        map[driver] = {
-          owner: owner,
-          seasonTotal: totals[owner.toLowerCase()] || 0,
-        };
+        const key = owner.toLowerCase();
+        pickByOwner[key] = driver;
+        pickIndex[key] = seq++;
+        ownerInfo[driver] = { owner: owner, seasonTotal: totals[key] || 0 };
       });
 
-      if (Object.keys(map).length === 0) throw new Error('no picks parsed');
-      ownerInfo = map;
+      // One entry per standings owner: picked owners first in pick order,
+      // then owners still on the clock.
+      const list = standingOwners.map(owner => ({
+        owner: owner,
+        seasonTotal: totals[owner.toLowerCase()] || 0,
+        driver: pickByOwner[owner.toLowerCase()] || null,
+      }));
+      const picked = list.filter(o => o.driver).sort((a, b) =>
+        pickIndex[a.owner.toLowerCase()] - pickIndex[b.owner.toLowerCase()]);
+      const pending = list.filter(o => !o.driver);
+      ownerList = picked.concat(pending);
+      draftComplete = pending.length === 0;
       return;
     } catch (e) {
       console.error('Owner sheet load failed, using fallback:', e);
-      ownerInfo = buildOwnerInfo(FALLBACK_OWNERS);
+      ownerInfo = {};
+      ownerList = FALLBACK_OWNERS.map(o => {
+        const driver = cleanName(o.driver);
+        ownerInfo[driver] = { owner: o.owner, seasonTotal: o.seasonTotal };
+        return { owner: o.owner, seasonTotal: o.seasonTotal, driver: driver };
+      });
+      draftComplete = true;
     }
   }
 
-  // ---- Race selection ------------------------------------------------
+  // ---- Race selection (race mode only) -------------------------------
 
-  // Cached race id resolved from the season schedule (the league's most
-  // recent race). Used when the live session belongs to another series.
-  let scheduleRaceId = null;
+  // Resolve and latch the race id for the current picks. Once set it is
+  // reused until the picks sheet is reset, so a finished race keeps showing
+  // ("race complete") instead of jumping to next week's race.
+  async function leagueRaceId() {
+    if (lockedRaceId !== null) return lockedRaceId;
 
-  async function leagueRaceIdFromSchedule() {
-    if (scheduleRaceId !== null) return scheduleRaceId;
-    const res = await fetch(SCHEDULE_URL + '?_=' + Date.now());
-    if (!res.ok) throw new Error('schedule HTTP ' + res.status);
-    const data = await res.json();
-    const races = data['series_' + LEAGUE_SERIES_ID] || [];
-    const now = Date.now();
-    // Most recent race whose start time has already passed.
-    let best = null, bestT = -Infinity;
-    races.forEach(r => {
-      const t = new Date(r.race_date || r.date_scheduled).getTime();
-      if (!Number.isNaN(t) && t <= now && t > bestT) { bestT = t; best = r; }
-    });
-    // Before the season's first race, fall back to the earliest one.
-    if (!best && races.length) {
-      best = races.reduce((a, b) =>
-        new Date(a.race_date) <= new Date(b.race_date) ? a : b);
-    }
-    scheduleRaceId = best ? best.race_id : null;
-    return scheduleRaceId;
-  }
-
-  // Resolve { raceId, feed } for the league's current/most-recent race.
-  // If the league's series is live right now, that live session is used;
-  // otherwise the most recent league race from the schedule is used.
-  async function resolveLeagueRace() {
-    let globalFeed = null;
+    // Prefer a league race that is live right now.
     try {
       const res = await fetch(LIVE_FEED_URL + '?_=' + Date.now());
-      globalFeed = await res.json();
+      const gf = await res.json();
+      if (gf && gf.series_id === LEAGUE_SERIES_ID && gf.race_id) {
+        lockedRaceId = gf.race_id;
+        return lockedRaceId;
+      }
     } catch (e) {
-      console.error('live-feed fetch failed:', e);
+      console.error('live-feed probe failed:', e);
     }
 
-    if (globalFeed && globalFeed.series_id === LEAGUE_SERIES_ID
-        && Array.isArray(globalFeed.vehicles)) {
-      // Our series is the session that's live right now.
-      return { raceId: globalFeed.race_id, feed: globalFeed };
+    // Otherwise the next race on the schedule — the one just drafted for.
+    try {
+      const res = await fetch(SCHEDULE_URL + '?_=' + Date.now());
+      if (res.ok) {
+        const data = await res.json();
+        const races = data['series_' + LEAGUE_SERIES_ID] || [];
+        const race = races.find(r => !r.winner_driver_id)
+          || races[races.length - 1];
+        if (race) lockedRaceId = race.race_id;
+      } else {
+        console.error('schedule HTTP ' + res.status);
+      }
+    } catch (e) {
+      console.error('schedule fetch failed:', e);
     }
+    return lockedRaceId;
+  }
 
-    // A different series is live (or nothing is) — use our latest race.
-    const raceId = await leagueRaceIdFromSchedule();
-    if (!raceId) return { raceId: null, feed: null };
-    let feed = null;
+  // The league race's live feed: vehicle data plus lap/flag state. The
+  // series-namespaced URL is live during the race and persists afterward.
+  async function fetchRaceFeed(raceId) {
+    if (!raceId) return null;
     try {
       const url = `https://cf.nascar.com/cacher/live/series_${LEAGUE_SERIES_ID}`
         + `/${raceId}/live-feed.json?_=` + Date.now();
       const res = await fetch(url);
-      if (res.ok) feed = await res.json();
-      else console.error('per-race live-feed HTTP ' + res.status);
+      if (res.ok) return await res.json();
+      console.error('race live-feed HTTP ' + res.status);
     } catch (e) {
-      console.error('per-race live-feed fetch failed:', e);
+      console.error('race live-feed fetch failed:', e);
     }
-    return { raceId, feed };
+    return null;
   }
 
-  // ---- Vehicle table -------------------------------------------------
+  // ---- Rendering: draft board ----------------------------------------
 
-  function renderVehicles(data) {
-    const liveFeedData = document.getElementById('liveFeedData');
-    if (!data || !Array.isArray(data.vehicles)) {
-      console.error('No vehicle data to render.');
-      return;
-    }
+  function renderDraftBoard() {
+    document.getElementById('raceView').style.display = 'none';
+    document.getElementById('ownerTitle').textContent = 'Draft Board';
 
-    document.getElementById('lapNumber').textContent = data.lap_number ?? '';
-    document.getElementById('lastUpdate').textContent =
+    const picked = ownerList.filter(o => o.driver).length;
+    document.getElementById('status').textContent =
+      `Draft in progress — ${picked} of ${ownerList.length} picks made`;
+
+    document.getElementById('ownerHead').innerHTML =
+      '<tr><th>Owner</th><th>Pick</th><th>Season Total</th></tr>';
+
+    const body = document.getElementById('ownerBody');
+    body.innerHTML = '';
+    ownerList.forEach(o => {
+      const row = document.createElement('tr');
+      if (!o.driver) row.className = 'muted';
+      row.innerHTML =
+        `<td>${o.owner}</td>` +
+        `<td>${o.driver || 'on the clock'}</td>` +
+        `<td>${o.seasonTotal}</td>`;
+      body.appendChild(row);
+    });
+    document.getElementById('lastUpdateOwners').textContent =
       new Date().toLocaleTimeString();
+  }
 
-    liveFeedData.innerHTML = '';
-    data.vehicles.forEach(vehicle => {
+  // ---- Rendering: race view ------------------------------------------
+
+  function renderVehicles(feed) {
+    const tbody = document.getElementById('liveFeedData');
+    tbody.innerHTML = '';
+    if (!feed || !Array.isArray(feed.vehicles)) return;
+    feed.vehicles.forEach(vehicle => {
       const driverName = cleanName(vehicle.driver && vehicle.driver.full_name);
       const info = ownerInfo[driverName];
       const row = document.createElement('tr');
-      if (!info) row.className = 'undrafted';
+      if (!info) row.className = 'muted';
       row.innerHTML =
         `<td>${vehicle.vehicle_number}</td><td>${driverName}</td>` +
         `<td>${info ? info.owner : 'undrafted'}</td>`;
-      liveFeedData.appendChild(row);
+      tbody.appendChild(row);
     });
+    document.getElementById('lastUpdate').textContent =
+      new Date().toLocaleTimeString();
   }
 
-  // ---- Points feed (owner points table) ------------------------------
+  function setRaceStatus(feed) {
+    const statusEl = document.getElementById('status');
+    if (!feed || !Array.isArray(feed.vehicles) || !feed.vehicles.length) {
+      statusEl.textContent = 'Draft complete — race not started';
+    } else if (feed.flag_state === FLAG_CHECKERED) {
+      statusEl.textContent =
+        'Race complete' + (feed.run_name ? ' — ' + feed.run_name : '');
+    } else {
+      statusEl.textContent =
+        (feed.run_name ? feed.run_name + ' — ' : '')
+        + `Lap ${feed.lap_number || 0}`
+        + (feed.laps_in_race ? ` of ${feed.laps_in_race}` : '');
+    }
+  }
 
-  async function fetchPoints(seriesId, raceId) {
-    const ownerPointsTable = document.getElementById('ownerPointsTable');
+  async function renderRaceView() {
+    document.getElementById('raceView').style.display = '';
+    document.getElementById('ownerTitle').textContent = 'Owner Points';
+
+    const raceId = await leagueRaceId();
+    const feed = await fetchRaceFeed(raceId);
+    renderVehicles(feed);
+    setRaceStatus(feed);
 
     // Points earned this race, keyed by cleaned driver name. Stays empty if
-    // the feed is unavailable — owners then show with just their season base.
+    // the feed is unavailable (race not started / failed fetch).
     const earnedByDriver = {};
-    if (seriesId && raceId) {
+    if (raceId) {
       try {
-        const url = `https://cf.nascar.com/live/feeds/series_${seriesId}`
+        const url = `https://cf.nascar.com/live/feeds/series_${LEAGUE_SERIES_ID}`
           + `/${raceId}/live_points.json?_=` + Date.now();
         const res = await fetch(url);
         if (res.ok) {
@@ -275,12 +319,9 @@
           if (Array.isArray(data)) {
             data.forEach(vehicle => {
               const name = cleanName(
-                `${vehicle.first_name || ''} ${vehicle.last_name || ''}`
-              );
+                `${vehicle.first_name || ''} ${vehicle.last_name || ''}`);
               if (name) earnedByDriver[name] = vehicle.points_earned_this_race || 0;
             });
-          } else {
-            console.error('Invalid points data structure.');
           }
         } else {
           console.error('Points feed returned HTTP ' + res.status);
@@ -290,52 +331,56 @@
       }
     }
 
-    document.getElementById('lastUpdatePoints').textContent =
-      new Date().toLocaleTimeString();
+    document.getElementById('ownerHead').innerHTML =
+      '<tr><th>Owner</th><th>Driver</th><th>Points Earned This Race</th>'
+      + '<th>Season Total</th></tr>';
 
-    // One row per league owner, whether or not their driver ran this race.
-    const standings = Object.keys(ownerInfo).map(driver => {
-      const info = ownerInfo[driver];
-      const earned = earnedByDriver[driver] || 0;
+    // One row per owner; base (pre-race) total + live race points.
+    const standings = ownerList.map(o => {
+      const earned = (o.driver && earnedByDriver[o.driver]) || 0;
       return {
-        driver: driver,
-        owner: info.owner,
+        owner: o.owner,
+        driver: o.driver,
         earned: earned,
-        // base (pre-race) + live race points, recomputed every poll.
-        total: info.seasonTotal + earned,
+        total: o.seasonTotal + earned,
       };
     });
-
     standings.sort((a, b) => b.total - a.total);
 
-    ownerPointsTable.innerHTML = '';
+    const body = document.getElementById('ownerBody');
+    body.innerHTML = '';
     standings.forEach(s => {
       const row = document.createElement('tr');
-      row.innerHTML = `
-        <td>${s.owner}</td>
-        <td>${s.driver}</td>
-        <td>${s.earned}</td>
-        <td>${s.total}</td>
-      `;
-      ownerPointsTable.appendChild(row);
+      row.innerHTML =
+        `<td>${s.owner}</td><td>${s.driver || '—'}</td>` +
+        `<td>${s.earned}</td><td>${s.total}</td>`;
+      body.appendChild(row);
     });
+    document.getElementById('lastUpdateOwners').textContent =
+      new Date().toLocaleTimeString();
   }
 
   // ---- Orchestration -------------------------------------------------
 
   async function refresh() {
     try {
-      const { raceId, feed } = await resolveLeagueRace();
-      if (feed) renderVehicles(feed);
-      // fetchPoints handles a null raceId: it just shows season bases.
-      await fetchPoints(LEAGUE_SERIES_ID, raceId);
+      // Re-read the sheets every cycle so the draft board updates live and
+      // a sheet reset is noticed promptly.
+      await loadOwnerInfo();
+      if (draftComplete) {
+        await renderRaceView();
+      } else {
+        // Picks sheet is incomplete (mid-draft, or just reset) — drop the
+        // latched race so the next completed draft re-resolves its race.
+        lockedRaceId = null;
+        renderDraftBoard();
+      }
     } catch (error) {
       console.error('Refresh failed:', error);
     }
   }
 
   (async () => {
-    await loadOwnerInfo();
     await refresh();
     setInterval(refresh, REFRESH_MS);
   })();
