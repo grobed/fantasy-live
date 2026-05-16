@@ -80,10 +80,6 @@
   let ownerList = [];
   // true once every standings owner has a pick.
   let draftComplete = false;
-  // Latched race id for the current picks. Set when race mode begins so it
-  // does NOT advance to next week's race after this race finishes; cleared
-  // when the picks sheet is reset (back to draft mode).
-  let lockedRaceId = null;
 
   // ---- Utilities -----------------------------------------------------
 
@@ -182,40 +178,43 @@
 
   // ---- Race selection (race mode only) -------------------------------
 
-  // Resolve and latch the race id for the current picks. Once set it is
-  // reused until the picks sheet is reset, so a finished race keeps showing
-  // ("race complete") instead of jumping to next week's race.
+  // Resolve the race id for the current picks. A league race that is live
+  // right now wins; otherwise the most recently run league race — which
+  // keeps showing (its results) until the picks sheet is reset for the next
+  // draft. Fully stateless: re-derived every refresh.
   async function leagueRaceId() {
-    if (lockedRaceId !== null) return lockedRaceId;
-
-    // Prefer a league race that is live right now.
+    // A league race that is live right now takes precedence. A different
+    // series being live (series_id mismatch) is ignored.
     try {
       const res = await fetch(LIVE_FEED_URL + '?_=' + Date.now());
       const gf = await res.json();
       if (gf && gf.series_id === LEAGUE_SERIES_ID && gf.race_id) {
-        lockedRaceId = gf.race_id;
-        return lockedRaceId;
+        return gf.race_id;
       }
     } catch (e) {
       console.error('live-feed probe failed:', e);
     }
 
-    // Otherwise the next race on the schedule — the one just drafted for.
+    // Otherwise the most recently started league race on the schedule.
     try {
       const res = await fetch(SCHEDULE_URL + '?_=' + Date.now());
       if (res.ok) {
         const data = await res.json();
         const races = data['series_' + LEAGUE_SERIES_ID] || [];
-        const race = races.find(r => !r.winner_driver_id)
-          || races[races.length - 1];
-        if (race) lockedRaceId = race.race_id;
+        const now = Date.now();
+        const started = races.filter(r =>
+          r.race_date && new Date(r.race_date).getTime() <= now);
+        const race = started.length
+          ? started[started.length - 1]
+          : races[0];
+        if (race) return race.race_id;
       } else {
         console.error('schedule HTTP ' + res.status);
       }
     } catch (e) {
       console.error('schedule fetch failed:', e);
     }
-    return lockedRaceId;
+    return null;
   }
 
   // The league race's live feed: vehicle data plus lap/flag state. The
@@ -370,9 +369,6 @@
       if (draftComplete) {
         await renderRaceView();
       } else {
-        // Picks sheet is incomplete (mid-draft, or just reset) — drop the
-        // latched race so the next completed draft re-resolves its race.
-        lockedRaceId = null;
         renderDraftBoard();
       }
     } catch (error) {
