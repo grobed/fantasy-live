@@ -176,45 +176,82 @@
     }
   }
 
-  // ---- Race selection (race mode only) -------------------------------
+  // ---- Race selection ------------------------------------------------
 
-  // Resolve the race id for the current picks. A league race that is live
-  // right now wins; otherwise the most recently run league race — which
-  // keeps showing (its results) until the picks sheet is reset for the next
-  // draft. Fully stateless: re-derived every refresh.
-  async function leagueRaceId() {
-    // A league race that is live right now takes precedence. A different
-    // series being live (series_id mismatch) is ignored.
+  // Local Saturday/Sunday. The league drafts after each race and resets the
+  // picks sheet before the weekend, so a completed draft means "this
+  // weekend's race" on Sat/Sun and "last weekend's race" Mon-Fri.
+  function isWeekend() {
+    const d = new Date().getDay();   // 0 = Sun, 6 = Sat
+    return d === 0 || d === 6;
+  }
+
+  // League races from the season schedule, each paired with its start time
+  // in epoch ms, sorted oldest first.
+  async function fetchSchedule() {
+    try {
+      const res = await fetch(SCHEDULE_URL + '?_=' + Date.now());
+      if (!res.ok) { console.error('schedule HTTP ' + res.status); return []; }
+      const data = await res.json();
+      const races = data['series_' + LEAGUE_SERIES_ID] || [];
+      return races
+        .filter(r => r.race_date)
+        .map(r => ({ race: r, t: new Date(r.race_date).getTime() }))
+        .filter(x => !Number.isNaN(x.t))
+        .sort((a, b) => a.t - b.t);
+    } catch (e) {
+      console.error('schedule fetch failed:', e);
+      return [];
+    }
+  }
+
+  // race_id of a league race running right now (green/yellow/red/white
+  // flag), or null. A pre-race or checkered feed, or another series, does
+  // not count as live.
+  async function liveRaceProbe() {
     try {
       const res = await fetch(LIVE_FEED_URL + '?_=' + Date.now());
       const gf = await res.json();
-      if (gf && gf.series_id === LEAGUE_SERIES_ID && gf.race_id) {
+      if (gf && gf.series_id === LEAGUE_SERIES_ID && gf.race_id
+          && gf.flag_state >= 1 && gf.flag_state <= 4) {
         return gf.race_id;
       }
     } catch (e) {
       console.error('live-feed probe failed:', e);
     }
-
-    // Otherwise the most recently started league race on the schedule.
-    try {
-      const res = await fetch(SCHEDULE_URL + '?_=' + Date.now());
-      if (res.ok) {
-        const data = await res.json();
-        const races = data['series_' + LEAGUE_SERIES_ID] || [];
-        const now = Date.now();
-        const started = races.filter(r =>
-          r.race_date && new Date(r.race_date).getTime() <= now);
-        const race = started.length
-          ? started[started.length - 1]
-          : races[0];
-        if (race) return race.race_id;
-      } else {
-        console.error('schedule HTTP ' + res.status);
-      }
-    } catch (e) {
-      console.error('schedule fetch failed:', e);
-    }
     return null;
+  }
+
+  // Decide what a completed draft should show. Stateless, re-derived every
+  // refresh:
+  //   live      - a league race is running now -> live leaderboard
+  //   complete  - a finished race's results: the race that ran within the
+  //               last 2 days (keeps results up through the weekend), or
+  //               Mon-Fri the most recent race (still "the previous race")
+  //   awaiting  - Sat/Sun before this weekend's race has run: owner roster
+  //               and season totals only, no prior-race results
+  async function resolveRace() {
+    const schedule = await fetchSchedule();
+    const now = Date.now();
+    const past = schedule.filter(x => x.t <= now);
+    const future = schedule.filter(x => x.t > now);
+    const last = past.length ? past[past.length - 1] : null;
+    const next = future.length ? future[0].race : null;
+
+    const liveId = await liveRaceProbe();
+    if (liveId) return { mode: 'live', raceId: liveId, race: null };
+
+    const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
+    if (last && now - last.t <= TWO_DAYS) {
+      return { mode: 'complete', raceId: last.race.race_id, race: last.race };
+    }
+    if (isWeekend()) {
+      return { mode: 'awaiting', raceId: next && next.race_id, race: next };
+    }
+    if (last) {
+      return { mode: 'complete', raceId: last.race.race_id, race: last.race };
+    }
+    return { mode: 'awaiting', raceId: next && next.race_id, race: next };
   }
 
   // The league race's live feed: vehicle data plus lap/flag state. The
@@ -261,6 +298,47 @@
       new Date().toLocaleTimeString();
   }
 
+  // ---- Rendering: awaiting next race ---------------------------------
+
+  function formatRaceDate(iso) {
+    const d = new Date(iso);
+    if (Number.isNaN(d.getTime())) return '';
+    return d.toLocaleDateString(undefined,
+      { weekday: 'short', month: 'short', day: 'numeric' });
+  }
+
+  // Draft complete, this weekend's race not yet run: show the owner roster
+  // with season totals. No leaderboard and no prior-race results.
+  function renderAwaiting(nextRace) {
+    document.getElementById('raceView').style.display = 'none';
+    document.getElementById('ownerTitle').textContent = 'Owners';
+
+    let status = 'Draft complete — race not started';
+    if (nextRace && nextRace.race_name) {
+      status += ' — ' + nextRace.race_name;
+      const when = formatRaceDate(nextRace.race_date);
+      if (nextRace.track_name) status += ' at ' + nextRace.track_name;
+      if (when) status += ' (' + when + ')';
+    }
+    document.getElementById('status').textContent = status;
+
+    document.getElementById('ownerHead').innerHTML =
+      '<tr><th>Owner</th><th>Driver</th><th>Season Total</th></tr>';
+
+    const rows = ownerList.slice().sort((a, b) => b.seasonTotal - a.seasonTotal);
+    const body = document.getElementById('ownerBody');
+    body.innerHTML = '';
+    rows.forEach(o => {
+      const row = document.createElement('tr');
+      row.innerHTML =
+        `<td>${o.owner}</td><td>${o.driver || '—'}</td>` +
+        `<td>${o.seasonTotal}</td>`;
+      body.appendChild(row);
+    });
+    document.getElementById('lastUpdateOwners').textContent =
+      new Date().toLocaleTimeString();
+  }
+
   // ---- Rendering: race view ------------------------------------------
 
   function renderVehicles(feed) {
@@ -296,11 +374,10 @@
     }
   }
 
-  async function renderRaceView() {
+  async function renderRaceView(raceId) {
     document.getElementById('raceView').style.display = '';
     document.getElementById('ownerTitle').textContent = 'Owner Points';
 
-    const raceId = await leagueRaceId();
     const feed = await fetchRaceFeed(raceId);
     renderVehicles(feed);
     setRaceStatus(feed);
@@ -366,10 +443,15 @@
       // Re-read the sheets every cycle so the draft board updates live and
       // a sheet reset is noticed promptly.
       await loadOwnerInfo();
-      if (draftComplete) {
-        await renderRaceView();
-      } else {
+      if (!draftComplete) {
         renderDraftBoard();
+        return;
+      }
+      const { mode, raceId, race } = await resolveRace();
+      if (mode === 'awaiting') {
+        renderAwaiting(race);
+      } else {
+        await renderRaceView(raceId);
       }
     } catch (error) {
       console.error('Refresh failed:', error);
