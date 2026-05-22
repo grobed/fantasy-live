@@ -6,6 +6,7 @@
   <title>NASCAR Fantasy — Draft Board &amp; Live Leaderboard</title>
   <style>
     tr.muted { color: #aaa; }
+    tr.onclock td { font-weight: bold; background: #fff3cd; }
   </style>
 </head>
 <body>
@@ -39,16 +40,21 @@
 <script>
   // ---- Configuration -------------------------------------------------
 
-  // Two published-to-web CSV tabs from the same Google Sheet.
-  //   Picks tab    - column A = owner, column B = driver. The first row
-  //                  holds the literal "owner"/"driver" labels. Row order
-  //                  is treated as draft-pick order.
-  //   Standings tab- column C = owner, column D = season points entering
-  //                  this race. This tab is the canonical full owner list:
-  //                  the draft is "complete" when every owner here has a
-  //                  pick. Rows whose points cell isn't numeric are skipped.
+  // Three published-to-web CSV tabs from the same Google Sheet.
+  //   Picks tab      - column A = owner, column B = driver. The first row
+  //                    holds the literal "owner"/"driver" labels.
+  //   Standings tab  - column C = owner, column D = season points entering
+  //                    this race. This tab is the canonical full owner list:
+  //                    the draft is "complete" when every owner here has a
+  //                    pick. Rows whose points cell isn't numeric are skipped.
+  //   Draft-order tab- single column of owner names in draft order (this
+  //                    week's previous-race finish order), "owner" header.
+  //                    Sets board order and who is on the clock. Optional:
+  //                    if it can't be loaded the board still works, just
+  //                    ordered picks-first / standings order.
   const PICKS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=7&single=true&output=csv';
   const STANDINGS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=148&single=true&output=csv';
+  const DRAFT_ORDER_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=4&single=true&output=csv';
 
   // The series this league picks from: 1 = Cup, 2 = Xfinity, 3 = Trucks.
   const LEAGUE_SERIES_ID = 1;
@@ -66,8 +72,8 @@
 
   // cleaned driver name -> { owner, seasonTotal }; drives the vehicle table.
   let ownerInfo = {};
-  // [{ owner, seasonTotal, driver|null }] one per standings owner — picked
-  // owners first (in draft-pick order), then owners still on the clock.
+  // [{ owner, seasonTotal, driver|null }] one per standings owner, in draft
+  // order (from the draft-order tab) when available.
   let ownerList = [];
   // true once every standings owner has a pick.
   let draftComplete = false;
@@ -120,11 +126,16 @@
   // good roster with wrong numbers.
   async function loadOwnerInfo() {
     try {
-      // Both tabs come from one sheet but need one request each (the CSV
-      // export is per-tab); fetch them at the same time.
-      const [pickRows, standingRows] = await Promise.all([
+      // All three tabs come from one sheet but need one request each (the
+      // CSV export is per-tab); fetch them at the same time. The draft-order
+      // tab is optional, so a failure there yields an empty list rather than
+      // sinking the whole load.
+      const [pickRows, standingRows, orderRows] = await Promise.all([
         fetchCSV(PICKS_CSV_URL),
         fetchCSV(STANDINGS_CSV_URL),
+        fetchCSV(DRAFT_ORDER_CSV_URL).catch(e => {
+          console.error('Draft-order load failed:', e); return [];
+        }),
       ]);
 
       // Standings tab: column C = owner, column D = season points.
@@ -140,8 +151,17 @@
       });
       if (standingOwners.length === 0) throw new Error('no standings rows parsed');
 
+      // Draft-order tab: single column of owner names in draft order. Match
+      // against known owners (case-insensitive) so the "owner" header and any
+      // stray cells are ignored.
+      const draftOrder = {};
+      let ord = 0;
+      orderRows.forEach(r => {
+        const key = (r[0] || '').trim().toLowerCase();
+        if (key && key in totals && !(key in draftOrder)) draftOrder[key] = ord++;
+      });
+
       // Picks tab: column A = owner, column B = driver. Skip the label row.
-      // Row order is draft-pick order.
       const pickByOwner = {};
       const pickIndex = {};
       const info = {};
@@ -156,20 +176,26 @@
         info[driver] = { owner: owner, seasonTotal: totals[key] || 0 };
       });
 
-      // One entry per standings owner: picked owners first in pick order,
-      // then owners still on the clock.
-      const list = standingOwners.map(owner => ({
-        owner: owner,
-        seasonTotal: totals[owner.toLowerCase()] || 0,
-        driver: pickByOwner[owner.toLowerCase()] || null,
-      }));
-      const picked = list.filter(o => o.driver).sort((a, b) =>
-        pickIndex[a.owner.toLowerCase()] - pickIndex[b.owner.toLowerCase()]);
-      const pending = list.filter(o => !o.driver);
+      // One entry per standings owner, sorted by the draft-order list.
+      // Owners missing from that list fall back to pick order (if picked) and
+      // then standings order, so the board degrades gracefully.
+      const list = standingOwners.map(owner => {
+        const key = owner.toLowerCase();
+        const order = key in draftOrder ? draftOrder[key]
+          : key in pickIndex ? 1e6 + pickIndex[key]
+          : 2e6;
+        return {
+          owner: owner,
+          seasonTotal: totals[key] || 0,
+          driver: pickByOwner[key] || null,
+          order: order,
+        };
+      });
+      list.sort((a, b) => a.order - b.order);
 
       ownerInfo = info;
-      ownerList = picked.concat(pending);
-      draftComplete = pending.length === 0;
+      ownerList = list;
+      draftComplete = list.every(o => o.driver);
       ownerDataLoaded = true;
       return true;
     } catch (e) {
@@ -295,13 +321,22 @@
 
     const body = document.getElementById('ownerBody');
     body.innerHTML = '';
+    let onClockShown = false;
     ownerList.forEach(o => {
       const row = document.createElement('tr');
-      if (!o.driver) row.className = 'muted';
+      let pick;
+      if (o.driver) {
+        pick = o.driver;
+      } else if (!onClockShown) {
+        pick = 'on the clock';
+        row.className = 'onclock';
+        onClockShown = true;
+      } else {
+        pick = '—';
+        row.className = 'muted';
+      }
       row.innerHTML =
-        `<td>${o.owner}</td>` +
-        `<td>${o.driver || 'on the clock'}</td>` +
-        `<td>${o.seasonTotal}</td>`;
+        `<td>${o.owner}</td><td>${pick}</td><td>${o.seasonTotal}</td>`;
       body.appendChild(row);
     });
     document.getElementById('lastUpdateOwners').textContent =
