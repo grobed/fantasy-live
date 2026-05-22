@@ -275,19 +275,19 @@
     const last = past.length ? past[past.length - 1] : null;
     const next = future.length ? future[0].race : null;
 
-    if (liveId) return { mode: 'live', raceId: liveId, race: null };
+    if (liveId) return { mode: 'live', raceId: liveId, race: null, nextRace: next };
 
     const TWO_DAYS = 2 * 24 * 60 * 60 * 1000;
     if (last && now - last.t <= TWO_DAYS) {
-      return { mode: 'complete', raceId: last.race.race_id, race: last.race };
+      return { mode: 'complete', raceId: last.race.race_id, race: last.race, nextRace: next };
     }
     if (isWeekend()) {
-      return { mode: 'awaiting', raceId: next && next.race_id, race: next };
+      return { mode: 'awaiting', raceId: next && next.race_id, race: next, nextRace: next };
     }
     if (last) {
-      return { mode: 'complete', raceId: last.race.race_id, race: last.race };
+      return { mode: 'complete', raceId: last.race.race_id, race: last.race, nextRace: next };
     }
-    return { mode: 'awaiting', raceId: next && next.race_id, race: next };
+    return { mode: 'awaiting', raceId: next && next.race_id, race: next, nextRace: next };
   }
 
   // The league race's live feed: vehicle data plus lap/flag state. The
@@ -308,13 +308,19 @@
 
   // ---- Rendering: draft board ----------------------------------------
 
-  function renderDraftBoard() {
+  function renderDraftBoard(nextRace) {
     document.getElementById('raceView').style.display = 'none';
     document.getElementById('ownerTitle').textContent = 'Draft Board';
 
     const picked = ownerList.filter(o => o.driver).length;
-    document.getElementById('status').textContent =
-      `Draft in progress — ${picked} of ${ownerList.length} picks made`;
+    let status = `Draft in progress — ${picked} of ${ownerList.length} picks made`;
+    if (nextRace && nextRace.race_name) {
+      status += ' — ' + nextRace.race_name;
+      if (nextRace.track_name) status += ' at ' + nextRace.track_name;
+      const when = formatCentralStart(nextRace);
+      if (when) status += ' — ' + when;
+    }
+    document.getElementById('status').textContent = status;
 
     document.getElementById('ownerHead').innerHTML =
       '<tr><th>Owner</th><th>Pick</th><th>Season Total</th></tr>';
@@ -537,7 +543,7 @@
       }
 
       if (!draftComplete) {
-        renderDraftBoard();
+        renderDraftBoard(raceInfo.nextRace);
       } else if (raceInfo.mode === 'awaiting') {
         renderAwaiting(raceInfo.race);
       } else {
