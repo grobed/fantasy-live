@@ -345,11 +345,42 @@
 
   // ---- Rendering: awaiting next race ---------------------------------
 
-  function formatRaceDate(iso) {
-    const d = new Date(iso);
-    if (Number.isNaN(d.getTime())) return '';
-    return d.toLocaleDateString(undefined,
-      { weekday: 'short', month: 'short', day: 'numeric' });
+  // Scheduled green-flag instant for a race. Prefer the schedule[] entry's
+  // start_time_utc (the only explicitly-UTC field; race_date carries no
+  // timezone), falling back to race_date. Returns a Date or null.
+  function raceStartDate(race) {
+    if (!race) return null;
+    const timed = (race.schedule || []).filter(e => e && e.start_time_utc);
+    const looksRace = e => {
+      const s = `${e.run_type || ''} ${e.event_name || ''}`.toLowerCase();
+      return /race/.test(s) && !/practice|qual/.test(s);
+    };
+    const toUtc = s =>
+      new Date(/[zZ]$|[+-]\d\d:?\d\d$/.test(s) ? s : s + 'Z');
+    const byTime = (a, b) => toUtc(a.start_time_utc) - toUtc(b.start_time_utc);
+    // The points race is the weekend's last timed event; prefer one labelled
+    // "race", otherwise just take the last.
+    const labelled = timed.filter(looksRace).sort(byTime);
+    const pick = labelled.length ? labelled[labelled.length - 1]
+      : (timed.slice().sort(byTime).pop() || null);
+    if (pick) {
+      const d = toUtc(pick.start_time_utc);
+      if (!Number.isNaN(d.getTime())) return d;
+    }
+    const fallback = new Date(race.race_date);
+    return Number.isNaN(fallback.getTime()) ? null : fallback;
+  }
+
+  // A race start formatted in U.S. Central time (CST/CDT handled by the
+  // runtime), explicitly labelled "CT". e.g. "Sun, Feb 15, 1:30 PM CT".
+  function formatCentralStart(race) {
+    const d = raceStartDate(race);
+    if (!d) return '';
+    return new Intl.DateTimeFormat('en-US', {
+      timeZone: 'America/Chicago',
+      weekday: 'short', month: 'short', day: 'numeric',
+      hour: 'numeric', minute: '2-digit',
+    }).format(d) + ' CT';
   }
 
   // Draft complete, this weekend's race not yet run: show the owner roster
@@ -361,9 +392,9 @@
     let status = 'Draft complete — race not started';
     if (nextRace && nextRace.race_name) {
       status += ' — ' + nextRace.race_name;
-      const when = formatRaceDate(nextRace.race_date);
       if (nextRace.track_name) status += ' at ' + nextRace.track_name;
-      if (when) status += ' (' + when + ')';
+      const when = formatCentralStart(nextRace);
+      if (when) status += ' — ' + when;
     }
     document.getElementById('status').textContent = status;
 
