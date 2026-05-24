@@ -30,12 +30,29 @@
 </div>
 
 <!-- Owner table: draft board during the draft, points table during the race -->
-<h3 id="ownerTitle">Owners</h3>
-<table border="1">
-  <thead id="ownerHead"></thead>
-  <tbody id="ownerBody"></tbody>
-</table>
-<p>Last Updated: <span id="lastUpdateOwners"></span></p>
+<div id="ownerView">
+  <h3 id="ownerTitle">Owners</h3>
+  <table border="1">
+    <thead id="ownerHead"></thead>
+    <tbody id="ownerBody"></tbody>
+  </table>
+  <p>Last Updated: <span id="lastUpdateOwners"></span></p>
+</div>
+
+<!-- Awaiting view: shown only between draft complete and race start -->
+<div id="awaitingView" style="display:none">
+  <h3>Draft Picks</h3>
+  <table border="1">
+    <thead><tr><th>Pick</th><th>Owner</th><th>Driver</th></tr></thead>
+    <tbody id="draftOrderBody"></tbody>
+  </table>
+  <h3>Current Standings</h3>
+  <table border="1">
+    <thead><tr><th>Owner</th><th>Driver</th><th>Season Total</th></tr></thead>
+    <tbody id="standingsBody"></tbody>
+  </table>
+  <p>Last Updated: <span id="lastUpdateAwaiting"></span></p>
+</div>
 
 <script>
   // ---- Configuration -------------------------------------------------
@@ -310,6 +327,8 @@
 
   function renderDraftBoard(nextRace) {
     document.getElementById('raceView').style.display = 'none';
+    document.getElementById('awaitingView').style.display = 'none';
+    document.getElementById('ownerView').style.display = '';
     document.getElementById('ownerTitle').textContent = 'Draft Board';
 
     const picked = ownerList.filter(o => o.driver).length;
@@ -389,11 +408,13 @@
     }).format(d) + ' CT';
   }
 
-  // Draft complete, this weekend's race not yet run: show the owner roster
-  // with season totals. No leaderboard and no prior-race results.
+  // Draft complete, this weekend's race not yet run: show the picks in
+  // draft order and the current points standings, side-by-side tables. No
+  // leaderboard and no prior-race results.
   function renderAwaiting(nextRace) {
     document.getElementById('raceView').style.display = 'none';
-    document.getElementById('ownerTitle').textContent = 'Owners';
+    document.getElementById('ownerView').style.display = 'none';
+    document.getElementById('awaitingView').style.display = '';
 
     let status = 'Draft complete — race not started';
     if (nextRace && nextRace.race_name) {
@@ -404,20 +425,27 @@
     }
     document.getElementById('status').textContent = status;
 
-    document.getElementById('ownerHead').innerHTML =
-      '<tr><th>Owner</th><th>Driver</th><th>Season Total</th></tr>';
+    // Draft picks in draft order — ownerList is already sorted that way.
+    const draftBody = document.getElementById('draftOrderBody');
+    draftBody.innerHTML = '';
+    ownerList.forEach((o, i) => {
+      const row = document.createElement('tr');
+      row.innerHTML =
+        `<td>${i + 1}</td><td>${o.owner}</td><td>${o.driver || '—'}</td>`;
+      draftBody.appendChild(row);
+    });
 
-    const rows = ownerList.slice().sort((a, b) => b.seasonTotal - a.seasonTotal);
-    const body = document.getElementById('ownerBody');
-    body.innerHTML = '';
-    rows.forEach(o => {
+    // Current standings — sorted by season total.
+    const standBody = document.getElementById('standingsBody');
+    standBody.innerHTML = '';
+    ownerList.slice().sort((a, b) => b.seasonTotal - a.seasonTotal).forEach(o => {
       const row = document.createElement('tr');
       row.innerHTML =
         `<td>${o.owner}</td><td>${o.driver || '—'}</td>` +
         `<td>${o.seasonTotal}</td>`;
-      body.appendChild(row);
+      standBody.appendChild(row);
     });
-    document.getElementById('lastUpdateOwners').textContent =
+    document.getElementById('lastUpdateAwaiting').textContent =
       new Date().toLocaleTimeString();
   }
 
@@ -485,6 +513,8 @@
 
   async function renderRaceView(raceId) {
     document.getElementById('raceView').style.display = '';
+    document.getElementById('awaitingView').style.display = 'none';
+    document.getElementById('ownerView').style.display = '';
     document.getElementById('ownerTitle').textContent = 'Owner Points';
 
     const [feed, earnedByDriver] = await Promise.all([
