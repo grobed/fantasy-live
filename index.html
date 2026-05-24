@@ -19,6 +19,7 @@
   <table border="1">
     <thead>
       <tr>
+        <th>Pos</th>
         <th>Vehicle Number</th>
         <th>Driver</th>
         <th>Owner</th>
@@ -455,13 +456,21 @@
     const tbody = document.getElementById('liveFeedData');
     tbody.innerHTML = '';
     if (!feed || !Array.isArray(feed.vehicles)) return;
-    feed.vehicles.forEach(vehicle => {
+    // Feed usually arrives sorted; sort again to defend against out-of-order
+    // entries. Vehicles without a numeric running_position sink to the end.
+    const vehicles = feed.vehicles.slice().sort((a, b) => {
+      const pa = Number.isFinite(a.running_position) ? a.running_position : Infinity;
+      const pb = Number.isFinite(b.running_position) ? b.running_position : Infinity;
+      return pa - pb;
+    });
+    vehicles.forEach(vehicle => {
       const driverName = cleanName(vehicle.driver && vehicle.driver.full_name);
       const info = ownerInfo[driverName];
       const row = document.createElement('tr');
       if (!info) row.className = 'muted';
+      const pos = Number.isFinite(vehicle.running_position) ? vehicle.running_position : '—';
       row.innerHTML =
-        `<td>${vehicle.vehicle_number}</td><td>${driverName}</td>` +
+        `<td>${pos}</td><td>${vehicle.vehicle_number}</td><td>${driverName}</td>` +
         `<td>${info ? info.owner : 'undrafted'}</td>`;
       tbody.appendChild(row);
     });
