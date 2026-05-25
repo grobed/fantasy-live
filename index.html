@@ -23,6 +23,7 @@
         <th>Vehicle Number</th>
         <th>Driver</th>
         <th>Owner</th>
+        <th>Pick</th>
       </tr>
     </thead>
     <tbody id="liveFeedData"></tbody>
@@ -210,6 +211,12 @@
         };
       });
       list.sort((a, b) => a.order - b.order);
+
+      // After ordering, stamp each picked driver with its 1-based draft pick
+      // number so the live leaderboard can show it.
+      list.forEach((o, i) => {
+        if (o.driver && info[o.driver]) info[o.driver].pick = i + 1;
+      });
 
       ownerInfo = info;
       ownerList = list;
@@ -469,9 +476,10 @@
       const row = document.createElement('tr');
       if (!info) row.className = 'muted';
       const pos = Number.isFinite(vehicle.running_position) ? vehicle.running_position : '—';
+      const pick = info && info.pick ? info.pick : '—';
       row.innerHTML =
         `<td>${pos}</td><td>${vehicle.vehicle_number}</td><td>${driverName}</td>` +
-        `<td>${info ? info.owner : 'undrafted'}</td>`;
+        `<td>${info ? info.owner : 'undrafted'}</td><td>${pick}</td>`;
       tbody.appendChild(row);
     });
     document.getElementById('lastUpdate').textContent =
