@@ -7,6 +7,8 @@
   <style>
     tr.muted { color: #aaa; }
     tr.onclock td { font-weight: bold; background: #fff3cd; }
+    td.up { color: #198754; font-weight: bold; }
+    td.down { color: #dc3545; font-weight: bold; }
   </style>
 </head>
 <body>
@@ -543,9 +545,11 @@
 
     document.getElementById('ownerHead').innerHTML =
       '<tr><th>Owner</th><th>Driver</th><th>Points Earned This Race</th>'
-      + '<th>Season Total</th></tr>';
+      + '<th>Season Total</th><th>+/-</th></tr>';
 
-    // One row per owner; base (pre-race) total + live race points.
+    // One row per owner; base (pre-race) total + live race points. Track each
+    // owner's pre-race rank so we can show how many positions they've moved
+    // during the race.
     const standings = ownerList.map(o => {
       const earned = (o.driver && earnedByDriver[o.driver]) || 0;
       return {
@@ -553,17 +557,26 @@
         driver: o.driver,
         earned: earned,
         total: o.seasonTotal + earned,
+        seasonTotal: o.seasonTotal,
       };
     });
+    const preRank = {};
+    standings.slice().sort((a, b) => b.seasonTotal - a.seasonTotal)
+      .forEach((s, i) => { preRank[s.owner] = i; });
     standings.sort((a, b) => b.total - a.total);
 
     const body = document.getElementById('ownerBody');
     body.innerHTML = '';
-    standings.forEach(s => {
+    standings.forEach((s, i) => {
+      const delta = preRank[s.owner] - i;   // + = moved up, - = moved down
+      let deltaCell;
+      if (delta > 0) deltaCell = `<td class="up">+${delta}</td>`;
+      else if (delta < 0) deltaCell = `<td class="down">${delta}</td>`;
+      else deltaCell = `<td>—</td>`;
       const row = document.createElement('tr');
       row.innerHTML =
         `<td>${s.owner}</td><td>${s.driver || '—'}</td>` +
-        `<td>${s.earned}</td><td>${s.total}</td>`;
+        `<td>${s.earned}</td><td>${s.total}</td>${deltaCell}`;
       body.appendChild(row);
     });
     document.getElementById('lastUpdateOwners').textContent =
