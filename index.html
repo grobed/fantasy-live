@@ -108,9 +108,20 @@
 
   // ---- Utilities -----------------------------------------------------
 
+  // Driver-name aliases. Keys are lower-case, period-free, no rookie/playoff
+  // markers — i.e. the lookup form produced by cleanName below. Values are
+  // the canonical spelling we want every side (feed, sheet) to converge on.
+  // Add entries here whenever the feed and sheet disagree on a driver's name.
+  const DRIVER_ALIASES = {
+    'john h nemechek': 'John Hunter Nemechek',
+  };
+
   function cleanName(s) {
-    // Strip rookie/playoff markers (* #) and collapse whitespace.
-    return (s || '').replace(/[*#]/g, '').replace(/\s+/g, ' ').trim();
+    // Strip rookie/playoff markers (* #) and periods, collapse whitespace,
+    // then resolve any known alias so the feed and the picks sheet match
+    // even when they spell a driver differently.
+    const cleaned = (s || '').replace(/[*#.]/g, '').replace(/\s+/g, ' ').trim();
+    return DRIVER_ALIASES[cleaned.toLowerCase()] || cleaned;
   }
 
   function parseCSV(text) {
