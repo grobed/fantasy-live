@@ -1,0 +1,3 @@
+# Copy to `.dev.vars` for local `wrangler dev`. NOT committed (see .gitignore).
+# In production this is set via: wrangler secret put BACKEND_SECRET
+BACKEND_SECRET="choose-a-long-random-string"

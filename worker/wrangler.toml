@@ -1,0 +1,45 @@
+# Cloudflare Worker config for the fantasy-live backend.
+#
+# Two values must be pasted in after you create the resources (see README.md):
+#   - [[d1_databases]].database_id   <- from `wrangler d1 create fantasy_live`
+#   - (the R2 bucket has no id to paste; the name below must match what you
+#     create with `wrangler r2 bucket create`)
+#
+# Secrets are NOT stored here. Set the operator secret with:
+#   wrangler secret put BACKEND_SECRET
+
+name = "fantasy-live"
+main = "src/index.ts"
+compatibility_date = "2024-09-23"
+
+# One Worker, one schedule. The handler branches on controller.cron.
+# Every minute: reconcile sheet -> D1, then archive any just-finished race's
+# lap-times.json into R2. NASCAR hits are gated by D1 state (see README).
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# Empty SEASON => current calendar year (UTC). Override to pin a season.
+SEASON = ""
+# League series: 1 = Cup, 2 = Xfinity, 3 = Trucks.
+LEAGUE_SERIES_ID = "1"
+# CORS allowlist for /api/* (the browser reads /api/state from here).
+# Set this to your GitHub Pages / custom-domain origin, e.g.
+#   CORS_ORIGIN = "https://grobed.github.io"
+# "*" is acceptable for this read-only public league data.
+CORS_ORIGIN = "*"
+# The three published-CSV tabs from the league Google Sheet (verbatim from
+# index.html). Picks gid=7, Standings gid=148, Draft order gid=4.
+PICKS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=7&single=true&output=csv"
+STANDINGS_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=148&single=true&output=csv"
+DRAFT_ORDER_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=4&single=true&output=csv"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "fantasy_live"
+database_id = "PASTE_D1_DATABASE_ID_HERE"
+migrations_dir = "migrations"
+
+[[r2_buckets]]
+binding = "ARCHIVE"
+bucket_name = "fantasy-live-archive"
