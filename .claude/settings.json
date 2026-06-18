@@ -1,0 +1,12 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "sandbox": {
+    "network": {
+      "allowedDomains": [
+        "cf.nascar.com",
+        "docs.google.com",
+        "*.googleusercontent.com"
+      ]
+    }
+  }
+}
