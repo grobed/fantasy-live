@@ -125,6 +125,15 @@
     return DRIVER_ALIASES[cleaned.toLowerCase()] || cleaned;
   }
 
+  // Standard NASCAR Cup finish-position → points mapping.
+  // 1st: 40, 2nd: 35, 3rd–36th: drops by 1 each spot, 37th+: floor of 1.
+  // Used as a fallback for drivers the live_points feed reports as 0
+  // (e.g. non-Cup-regular entrants whose series points aren't tracked).
+  function nascarPointsByPosition(pos) {
+    if (pos === 1) return 40;
+    return Math.max(1, 37 - pos);
+  }
+
   function parseCSV(text) {
     const rows = [];
     let row = [], field = '', inQuotes = false;
@@ -559,11 +568,25 @@
       '<tr><th>Owner</th><th>Driver</th><th>Points Earned This Race</th>'
       + '<th>Season Total</th><th>+/-</th></tr>';
 
+    // Position fallback: for drivers the live_points feed shows as 0
+    // (non-Cup-regular entrants like Corey Heim), compute points from their
+    // running position in the live feed instead.
+    const positionByDriver = {};
+    if (feed && Array.isArray(feed.vehicles)) {
+      feed.vehicles.forEach(v => {
+        const name = cleanName(v.driver && v.driver.full_name);
+        if (name && Number.isFinite(v.running_position) && v.running_position > 0)
+          positionByDriver[name] = v.running_position;
+      });
+    }
+
     // One row per owner; base (pre-race) total + live race points. Track each
     // owner's pre-race rank so we can show how many positions they've moved
     // during the race.
     const standings = ownerList.map(o => {
-      const earned = (o.driver && earnedByDriver[o.driver]) || 0;
+      let earned = (o.driver && earnedByDriver[o.driver]) || 0;
+      if (earned === 0 && o.driver && positionByDriver[o.driver])
+        earned = nascarPointsByPosition(positionByDriver[o.driver]);
       return {
         owner: o.owner,
         driver: o.driver,
