@@ -551,15 +551,44 @@
     return earned;
   }
 
+  // Stage bonus points earned by each driver across all completed stages,
+  // keyed by cleaned driver name. Used only as a supplement for non-series
+  // entrants whose live_points feed shows 0 (regular drivers already have
+  // stage points baked into their points_earned_this_race value).
+  async function fetchStagePoints() {
+    const stagePoints = {};
+    try {
+      const res = await fetch(
+        'https://cf.nascar.com/live/feeds/live-stage-points.json?_=' + Date.now());
+      if (res.ok) {
+        const data = await res.json();
+        if (Array.isArray(data)) {
+          data.forEach(stage => {
+            if (Array.isArray(stage.results)) {
+              stage.results.forEach(r => {
+                const name = cleanName(r.full_name);
+                if (name) stagePoints[name] = (stagePoints[name] || 0) + (r.stage_points || 0);
+              });
+            }
+          });
+        }
+      }
+    } catch (e) {
+      console.error('Stage points fetch failed:', e);
+    }
+    return stagePoints;
+  }
+
   async function renderRaceView(raceId) {
     document.getElementById('raceView').style.display = '';
     document.getElementById('awaitingView').style.display = 'none';
     document.getElementById('ownerView').style.display = '';
     document.getElementById('ownerTitle').textContent = 'Owner Points';
 
-    const [feed, earnedByDriver] = await Promise.all([
+    const [feed, earnedByDriver, stagePointsByDriver] = await Promise.all([
       fetchRaceFeed(raceId),
       fetchRacePoints(raceId),
+      fetchStagePoints(),
     ]);
     renderVehicles(feed);
     setRaceStatus(feed);
@@ -586,7 +615,8 @@
     const standings = ownerList.map(o => {
       let earned = (o.driver && earnedByDriver[o.driver]) || 0;
       if (earned === 0 && o.driver && positionByDriver[o.driver])
-        earned = nascarPointsByPosition(positionByDriver[o.driver]);
+        earned = nascarPointsByPosition(positionByDriver[o.driver])
+          + (stagePointsByDriver[o.driver] || 0);
       return {
         owner: o.owner,
         driver: o.driver,
