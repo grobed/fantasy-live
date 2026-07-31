@@ -125,12 +125,12 @@
     return DRIVER_ALIASES[cleaned.toLowerCase()] || cleaned;
   }
 
-  // Standard NASCAR Cup finish-position → points mapping.
-  // 1st: 40, 2nd: 35, 3rd–36th: drops by 1 each spot, 37th+: floor of 1.
+  // Standard NASCAR Cup finish-position → points mapping (Rule 12.4.1.a).
+  // 1st: 55, 2nd: 35, 3rd–36th: drops by 1 each spot, 37th+: floor of 1.
   // Used as a fallback for drivers the live_points feed reports as 0
   // (e.g. non-Cup-regular entrants whose series points aren't tracked).
   function nascarPointsByPosition(pos) {
-    if (pos === 1) return 40;
+    if (pos === 1) return 55;
     return Math.max(1, 37 - pos);
   }
 
@@ -567,7 +567,11 @@
             if (Array.isArray(stage.results)) {
               stage.results.forEach(r => {
                 const name = cleanName(r.full_name);
-                if (name) stagePoints[name] = (stagePoints[name] || 0) + (r.stage_points || 0);
+                if (!name) return;
+                // Ineligible drivers may appear with stage_points=0; fall back
+                // to position-based calc (top 10 earn 10 down to 1).
+                const pts = r.stage_points || (r.position <= 10 ? 11 - r.position : 0);
+                stagePoints[name] = (stagePoints[name] || 0) + pts;
               });
             }
           });
