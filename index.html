@@ -646,16 +646,19 @@
 
     const body = document.getElementById('ownerBody');
     body.innerHTML = '';
+    const leaderTotal = standings.length ? standings[0].total : 0;
     standings.forEach((s, i) => {
       const delta = preRank[s.owner] - i;   // + = moved up, - = moved down
       let deltaCell;
       if (delta > 0) deltaCell = `<td class="up">+${delta}</td>`;
       else if (delta < 0) deltaCell = `<td class="down">${delta}</td>`;
       else deltaCell = `<td>—</td>`;
+      // Leader shows their actual total; everyone else shows points back.
+      const totalCell = i === 0 ? `${s.total}` : `${s.total - leaderTotal}`;
       const row = document.createElement('tr');
       row.innerHTML =
         `<td>${s.owner}</td><td>${s.driver || '—'}</td>` +
-        `<td>${s.earned}</td><td>${s.total}</td>${deltaCell}`;
+        `<td>${s.earned}</td><td>${totalCell}</td>${deltaCell}`;
       body.appendChild(row);
     });
     document.getElementById('lastUpdateOwners').textContent =
