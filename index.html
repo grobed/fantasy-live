@@ -22,9 +22,10 @@
     <thead>
       <tr>
         <th>Pos</th>
-        <th>Vehicle Number</th>
+        <th>Car No.</th>
         <th>Driver</th>
         <th>Owner</th>
+        <th>Points</th>
         <th>Pick</th>
       </tr>
     </thead>
@@ -482,7 +483,7 @@
 
   // ---- Rendering: race view ------------------------------------------
 
-  function renderVehicles(feed) {
+  function renderVehicles(feed, earnedFor) {
     const tbody = document.getElementById('liveFeedData');
     tbody.innerHTML = '';
     if (!feed || !Array.isArray(feed.vehicles)) return;
@@ -500,9 +501,10 @@
       if (!info) row.className = 'muted';
       const pos = Number.isFinite(vehicle.running_position) ? vehicle.running_position : '—';
       const pick = info && info.pick ? info.pick : '—';
+      const pts = earnedFor ? earnedFor(driverName, vehicle.running_position) : 0;
       row.innerHTML =
         `<td>${pos}</td><td>${vehicle.vehicle_number}</td><td>${driverName}</td>` +
-        `<td>${info ? info.owner : 'undrafted'}</td><td>${pick}</td>`;
+        `<td>${info ? info.owner : 'undrafted'}</td><td>${pts}</td><td>${pick}</td>`;
       tbody.appendChild(row);
     });
     document.getElementById('lastUpdate').textContent =
@@ -594,12 +596,6 @@
       fetchRacePoints(raceId),
       fetchStagePoints(),
     ]);
-    renderVehicles(feed);
-    setRaceStatus(feed);
-
-    document.getElementById('ownerHead').innerHTML =
-      '<tr><th>Owner</th><th>Driver</th><th>Points Earned This Race</th>'
-      + '<th>Season Total</th><th>+/-</th></tr>';
 
     // Position fallback: for drivers the live_points feed shows as 0
     // (non-Cup-regular entrants like Corey Heim), compute points from their
@@ -613,14 +609,28 @@
       });
     }
 
+    // Points earned this race for a driver: the feed's value, or a
+    // position-based fallback (plus stage points) when the feed reports 0.
+    // Shared by the leaderboard and the owner-points table.
+    function earnedFor(name, pos) {
+      let earned = (name && earnedByDriver[name]) || 0;
+      if (earned === 0 && name && Number.isFinite(pos) && pos > 0)
+        earned = nascarPointsByPosition(pos) + (stagePointsByDriver[name] || 0);
+      return earned;
+    }
+
+    renderVehicles(feed, earnedFor);
+    setRaceStatus(feed);
+
+    document.getElementById('ownerHead').innerHTML =
+      '<tr><th>Owner</th><th>Driver</th><th>Points Earned This Race</th>'
+      + '<th>Season Total</th><th>+/-</th></tr>';
+
     // One row per owner; base (pre-race) total + live race points. Track each
     // owner's pre-race rank so we can show how many positions they've moved
     // during the race.
     const standings = ownerList.map(o => {
-      let earned = (o.driver && earnedByDriver[o.driver]) || 0;
-      if (earned === 0 && o.driver && positionByDriver[o.driver])
-        earned = nascarPointsByPosition(positionByDriver[o.driver])
-          + (stagePointsByDriver[o.driver] || 0);
+      const earned = earnedFor(o.driver, o.driver && positionByDriver[o.driver]);
       return {
         owner: o.owner,
         driver: o.driver,
