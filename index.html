@@ -184,7 +184,7 @@
       const totals = {};
       const standingOwners = [];
       standingRows.forEach(r => {
-        const owner = (r[2] || '').trim();
+        const owner = (r[2] || '').trim().replace(/\s*\(#\d+\)$/, '');
         const pts = Number(r[3]);
         if (owner && !Number.isNaN(pts)) {
           totals[owner.toLowerCase()] = pts;
