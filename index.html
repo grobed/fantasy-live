@@ -74,7 +74,7 @@
   //                    if it can't be loaded the board still works, just
   //                    ordered picks-first / standings order.
   const PICKS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=7&single=true&output=csv';
-  const STANDINGS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=148&single=true&output=csv';
+  const STANDINGS_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=884199444&single=true&output=csv';
   const DRAFT_ORDER_CSV_URL = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR2xTweYJe4Z4kLiNTxaqqaHHEzF9kZelQMQclZ82Eg5X4l7wEfD57iyg5kJA0hedSIdcT_k0p2sLHM/pub?gid=4&single=true&output=csv';
 
   // The series this league picks from: 1 = Cup, 2 = Xfinity, 3 = Trucks.
@@ -121,7 +121,7 @@
     // Strip rookie/playoff markers (* #) and periods, collapse whitespace,
     // then resolve any known alias so the feed and the picks sheet match
     // even when they spell a driver differently.
-    const cleaned = (s || '').replace(/[*#.]/g, '').replace(/\s+/g, ' ').trim();
+    const cleaned = (s || '').replace(/[*#.]/g, '').replace(/\s*\([ic]\)/gi, '').replace(/\s+/g, ' ').trim();
     return DRIVER_ALIASES[cleaned.toLowerCase()] || cleaned;
   }
 
