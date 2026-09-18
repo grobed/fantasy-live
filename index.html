@@ -48,7 +48,7 @@
 <div id="draftStandingsView" style="display:none">
   <h3>Points Standings</h3>
   <table border="1">
-    <thead><tr><th>Owner</th><th>Season Total</th></tr></thead>
+    <thead><tr><th>Owner</th><th>Season Total</th><th>Wins</th></tr></thead>
     <tbody id="draftStandingsBody"></tbody>
   </table>
 </div>
@@ -190,14 +190,17 @@
         }),
       ]);
 
-      // Standings tab: column C = owner, column D = season points.
+      // Standings tab: column C = owner, column D = season points,
+      // column F = race wins.
       const totals = {};
+      const wins = {};
       const standingOwners = [];
       standingRows.forEach(r => {
         const owner = (r[2] || '').trim();
         const pts = Number(r[3]);
         if (owner && !Number.isNaN(pts)) {
           totals[owner.toLowerCase()] = pts;
+          wins[owner.toLowerCase()] = Number(r[5]) || 0;
           standingOwners.push(owner);
         }
       });
@@ -239,6 +242,7 @@
         return {
           owner: owner,
           seasonTotal: totals[key] || 0,
+          wins: wins[key] || 0,
           driver: pickByOwner[key] || null,
           order: order,
         };
@@ -418,7 +422,7 @@
     ranked.forEach((o, i) => {
       const totalCell = i === 0 ? `${o.seasonTotal}` : `${o.seasonTotal - leaderSeason}`;
       const row = document.createElement('tr');
-      row.innerHTML = `<td>${o.owner}</td><td>${totalCell}</td>`;
+      row.innerHTML = `<td>${o.owner}</td><td>${totalCell}</td><td>${o.wins}</td>`;
       standBody.appendChild(row);
     });
   }
