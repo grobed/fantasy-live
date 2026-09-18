@@ -48,7 +48,7 @@
 <div id="draftStandingsView" style="display:none">
   <h3>Points Standings</h3>
   <table border="1">
-    <thead><tr><th>Owner</th><th>Driver</th><th>Season Total</th></tr></thead>
+    <thead><tr><th>Owner</th><th>Season Total</th></tr></thead>
     <tbody id="draftStandingsBody"></tbody>
   </table>
 </div>
@@ -409,14 +409,16 @@
     document.getElementById('lastUpdateOwners').textContent =
       new Date().toLocaleTimeString();
 
-    // Points standings below the board — sorted by season total.
+    // Points standings below the board — sorted by season total. Leader
+    // shows their actual total; everyone else shows points back from leader.
     const standBody = document.getElementById('draftStandingsBody');
     standBody.innerHTML = '';
-    ownerList.slice().sort((a, b) => b.seasonTotal - a.seasonTotal).forEach(o => {
+    const ranked = ownerList.slice().sort((a, b) => b.seasonTotal - a.seasonTotal);
+    const leaderSeason = ranked.length ? ranked[0].seasonTotal : 0;
+    ranked.forEach((o, i) => {
+      const totalCell = i === 0 ? `${o.seasonTotal}` : `${o.seasonTotal - leaderSeason}`;
       const row = document.createElement('tr');
-      row.innerHTML =
-        `<td>${o.owner}</td><td>${o.driver || '—'}</td>` +
-        `<td>${o.seasonTotal}</td>`;
+      row.innerHTML = `<td>${o.owner}</td><td>${totalCell}</td>`;
       standBody.appendChild(row);
     });
   }
