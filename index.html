@@ -44,6 +44,15 @@
   <p>Last Updated: <span id="lastUpdateOwners"></span></p>
 </div>
 
+<!-- Points standings: shown below the board during the draft -->
+<div id="draftStandingsView" style="display:none">
+  <h3>Points Standings</h3>
+  <table border="1">
+    <thead><tr><th>Owner</th><th>Driver</th><th>Season Total</th></tr></thead>
+    <tbody id="draftStandingsBody"></tbody>
+  </table>
+</div>
+
 <!-- Awaiting view: shown only between draft complete and race start -->
 <div id="awaitingView" style="display:none">
   <h3>Draft Picks</h3>
@@ -361,6 +370,7 @@
     document.getElementById('raceView').style.display = 'none';
     document.getElementById('awaitingView').style.display = 'none';
     document.getElementById('ownerView').style.display = '';
+    document.getElementById('draftStandingsView').style.display = '';
     document.getElementById('ownerTitle').textContent = 'Draft Board';
 
     const picked = ownerList.filter(o => o.driver).length;
@@ -398,6 +408,17 @@
     });
     document.getElementById('lastUpdateOwners').textContent =
       new Date().toLocaleTimeString();
+
+    // Points standings below the board — sorted by season total.
+    const standBody = document.getElementById('draftStandingsBody');
+    standBody.innerHTML = '';
+    ownerList.slice().sort((a, b) => b.seasonTotal - a.seasonTotal).forEach(o => {
+      const row = document.createElement('tr');
+      row.innerHTML =
+        `<td>${o.owner}</td><td>${o.driver || '—'}</td>` +
+        `<td>${o.seasonTotal}</td>`;
+      standBody.appendChild(row);
+    });
   }
 
   // ---- Rendering: awaiting next race ---------------------------------
@@ -446,6 +467,7 @@
   function renderAwaiting(nextRace) {
     document.getElementById('raceView').style.display = 'none';
     document.getElementById('ownerView').style.display = 'none';
+    document.getElementById('draftStandingsView').style.display = 'none';
     document.getElementById('awaitingView').style.display = '';
 
     let status = 'Draft complete — race not started';
@@ -589,6 +611,7 @@
     document.getElementById('raceView').style.display = '';
     document.getElementById('awaitingView').style.display = 'none';
     document.getElementById('ownerView').style.display = '';
+    document.getElementById('draftStandingsView').style.display = 'none';
     document.getElementById('ownerTitle').textContent = 'Owner Points';
 
     const [feed, earnedByDriver, stagePointsByDriver] = await Promise.all([
