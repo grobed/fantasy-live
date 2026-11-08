@@ -495,14 +495,18 @@
       draftBody.appendChild(row);
     });
 
-    // Current standings — sorted by season total.
+    // Current standings — sorted by season total. Leader shows their actual
+    // total; everyone else shows points back from the leader.
     const standBody = document.getElementById('standingsBody');
     standBody.innerHTML = '';
-    ownerList.slice().sort((a, b) => b.seasonTotal - a.seasonTotal).forEach(o => {
+    const ranked = ownerList.slice().sort((a, b) => b.seasonTotal - a.seasonTotal);
+    const leaderSeason = ranked.length ? ranked[0].seasonTotal : 0;
+    ranked.forEach((o, i) => {
+      const totalCell = i === 0 ? `${o.seasonTotal}` : `${o.seasonTotal - leaderSeason}`;
       const row = document.createElement('tr');
       row.innerHTML =
         `<td>${o.owner}</td><td>${o.driver || '—'}</td>` +
-        `<td>${o.seasonTotal}</td>`;
+        `<td>${totalCell}</td>`;
       standBody.appendChild(row);
     });
     document.getElementById('lastUpdateAwaiting').textContent =
